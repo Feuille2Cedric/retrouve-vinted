@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Ton assistant personnel pour chercher, garder et écarter des trouvailles seconde main." />
+    <meta name="theme-color" content="#f7f4ed" />
+    <title>re:trouve — mon radar seconde main</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="config.js"></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="logo" href="#top" aria-label="re:trouve — accueil"><span>re:</span>trouve<i></i></a>
+      <nav aria-label="Navigation principale">
+        <button class="nav-link active" data-view="all">Mes trouvailles</button>
+        <button class="nav-link" data-view="favorites">Mes favoris <span id="favoriteNavCount">0</span></button>
+      </nav>
+      <button id="profileButton" class="profile-button" type="button" aria-label="Modifier mon profil"><span id="profileInitial">T</span><span id="profileButtonName">Toi</span><b>⌄</b></button>
+    </header>
+
+    <main id="top">
+      <section class="welcome">
+        <div>
+          <p class="overline"><span></span> Ton radar seconde main</p>
+          <h1>Bonjour <button id="inlineName" type="button">toi</button>,<br /><em>on cherche quoi aujourd'hui ?</em></h1>
+        </div>
+        <div class="welcome-note"><span>✦</span><p><strong>Un espace rien qu'à toi.</strong><br />Tes favoris et tes refus restent enregistrés sur cet appareil.</p></div>
+      </section>
+
+      <section class="workspace" aria-label="Recherche et résultats">
+        <aside class="filter-panel">
+          <div class="panel-heading"><span>Ma recherche</span><button id="resetFilters" type="button">Tout effacer</button></div>
+          <form id="searchForm">
+            <label class="field"><span>Je cherche *</span><div class="select-wrap"><select id="itemType" required>
+              <option value="">Choisir une pièce</option>
+              <option>Baskets</option><option>Veste</option><option>Manteau</option><option>Sweat</option><option>Pull</option><option>T-shirt</option><option>Chemise</option><option>Robe</option><option>Jean</option><option>Pantalon</option><option>Jupe</option><option>Bottes</option><option>Mocassins</option><option>Sandales</option><option>Sac</option><option>Casquette</option>
+            </select></div></label>
+            <label class="field"><span>Marque <small>facultatif</small></span><input id="brand" type="text" placeholder="Nike, Sézane, Carhartt…" autocomplete="off" /></label>
+            <label class="field"><span>Modèle ou détails</span><input id="details" type="text" placeholder="Air Max 90, rayé, vintage…" autocomplete="off" /></label>
+            <div class="field-row">
+              <label class="field"><span>Taille</span><input id="size" type="text" placeholder="M / 38 / 42" autocomplete="off" /></label>
+              <label class="field"><span>Prix max.</span><div class="money-input"><input id="maxPrice" type="number" min="1" placeholder="100" /><b>€</b></div></label>
+            </div>
+            <label class="field"><span>Couleur</span><input id="color" type="text" placeholder="Bleu marine, écru…" autocomplete="off" /></label>
+            <div class="seller-rating-field">
+              <label class="field"><span>Note vendeur minimale</span><div class="select-wrap"><select id="minRating">
+                <option value="">Toutes les notes</option><option value="3">3 ★ et plus</option><option value="3.5">3,5 ★ et plus</option><option value="4">4 ★ et plus</option><option value="4.5">4,5 ★ et plus</option><option value="4.8">4,8 ★ et plus</option>
+              </select></div></label>
+              <label class="toggle-row" for="allowUnrated"><span><strong>Accepter les nouveaux vendeurs</strong><small>Inclure ceux qui n'ont encore aucune évaluation</small></span><input id="allowUnrated" type="checkbox" checked /><i aria-hidden="true"></i></label>
+            </div>
+            <label class="field"><span>Marché Vinted</span><div class="select-wrap"><select id="market"><option value="fr">🇫🇷 France</option><option value="be">🇧🇪 Belgique</option><option value="nl">🇳🇱 Pays-Bas</option><option value="de">🇩🇪 Allemagne</option><option value="es">🇪🇸 Espagne</option><option value="it">🇮🇹 Italie</option><option value="co.uk">🇬🇧 Royaume-Uni</option></select></div></label>
+
+            <div class="photo-field">
+              <div class="photo-label"><span>Une photo de référence</span><small>optionnel</small></div>
+              <button id="photoDrop" class="photo-drop" type="button">
+                <input id="imageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+                <span id="photoPrompt"><b>＋</b><span>Ajouter une photo</span><small>Elle reste sur ton appareil</small></span>
+                <span id="photoPreviewWrap" class="photo-preview" hidden><img id="photoPreview" alt="Photo de référence" /><span><strong id="photoName"></strong><small>Cliquer pour remplacer</small></span></span>
+              </button>
+              <button id="analyzePhoto" class="analyze-photo" type="button" disabled><span>✦</span> M'aider à identifier la pièce</button>
+              <p id="analysisMessage" class="analysis-message" hidden></p>
+            </div>
+            <button class="submit-button" type="submit"><span id="submitLabel">Lancer la recherche</span><b>→</b></button>
+          </form>
+        </aside>
+
+        <div class="feed-panel">
+          <div id="sourceNotice" class="source-notice" role="status"><span>Mode aperçu</span><p>Connecte le moteur gratuit pour afficher les résultats ici, sans ouvrir une page de recherche Vinted.</p><button id="sourceHelp" type="button">Configurer</button></div>
+          <div class="feed-toolbar">
+            <div><p id="feedEyebrow">Sélection pour toi</p><h2 id="feedTitle">Les dernières trouvailles</h2></div>
+            <div class="toolbar-actions">
+              <button id="configureResults" class="vinted-button" type="button">Afficher ici</button>
+              <button id="rejectedButton" class="rejected-button" type="button">Écartées <span id="rejectedCount">0</span></button>
+              <label class="sort-control"><span>Trier</span><select id="sortSelect"><option value="relevance">Pertinence</option><option value="price-asc">Prix croissant</option><option value="price-desc">Prix décroissant</option><option value="newest">Plus récentes</option></select></label>
+            </div>
+          </div>
+          <div id="activeFilters" class="active-filters" aria-label="Filtres actifs"></div>
+          <div id="loadingState" class="loading-state" hidden><span></span><span></span><span></span><p>Je fouille les portants…</p></div>
+          <div id="listingGrid" class="listing-grid" aria-live="polite"></div>
+          <div id="googleResultsWrap" class="google-results-wrap" hidden>
+            <div class="google-results-note"><span>Résultats intégrés</span><p>Résultats de recherche limités aux annonces Vinted indexées par Google. Utilise le × pour écarter une annonce.</p></div>
+            <div id="googleResultsHost"></div>
+          </div>
+          <div id="emptyState" class="empty-state" hidden><span>∿</span><h3>Aucun résultat dans l'aperçu</h3><p>Connecte le moteur intégré pour afficher les résultats ici, sans ouvrir une autre page.</p><button id="emptyConfigure" class="empty-configure" type="button">Configurer l'affichage intégré</button><button id="emptyReset" type="button">Réinitialiser les filtres</button></div>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="profileDialog" class="modal">
+      <form method="dialog" id="profileForm">
+        <button class="modal-close" id="closeProfile" type="button" aria-label="Fermer">×</button><span class="modal-icon">☺</span>
+        <p class="overline"><span></span> Fais comme chez toi</p><h2>Comment veux-tu<br />qu'on t'appelle ?</h2>
+        <label class="field"><span>Ton prénom</span><input id="nameInput" maxlength="24" placeholder="Ex. Camille" autocomplete="given-name" /></label>
+        <button class="submit-button" value="default"><span>Enregistrer</span><b>→</b></button><p class="privacy-copy">Ce prénom reste uniquement dans ton navigateur.</p>
+      </form>
+    </dialog>
+    <dialog id="rejectedDialog" class="modal rejected-modal"><div>
+      <button class="modal-close" id="closeRejected" type="button" aria-label="Fermer">×</button><p class="overline"><span></span> La pile des non</p><h2>Annonces écartées</h2><p class="modal-subtitle">Une seconde chance ? Tu peux restaurer une pièce à tout moment.</p>
+      <div id="rejectedList" class="rejected-list"></div><button id="restoreAll" class="text-button" type="button">Tout restaurer</button>
+    </div></dialog>
+    <dialog id="sourceDialog" class="modal source-modal"><div>
+      <button class="modal-close" id="closeSource" type="button" aria-label="Fermer">×</button><span class="modal-icon">↗</span><p class="overline"><span></span> Annonces réelles</p><h2>Brancher une source</h2>
+      <p>La solution sans serveur consiste à connecter un moteur Google gratuit limité aux pages Vinted. Les résultats s'afficheront directement ici.</p>
+      <label class="field"><span>Identifiant du moteur Google</span><input id="searchEngineId" type="text" placeholder="Ex. 0123456789:abcde" autocomplete="off" /></label>
+      <button id="saveSearchEngine" class="submit-button" type="button"><span>Connecter le moteur</span><b>→</b></button>
+      <ol class="setup-steps"><li>Crée un moteur sur Google Programmable Search.</li><li>Ajoute <code>www.vinted.fr/items/*</code> dans “Sites à rechercher”.</li><li>Copie son identifiant puis colle-le ci-dessus.</li></ol>
+      <a href="https://programmablesearchengine.google.com/controlpanel/create" target="_blank" rel="noopener noreferrer">Créer le moteur gratuitement ↗</a><br /><a href="README.md" target="_blank">Voir le guide détaillé →</a>
+    </div></dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <footer><a class="logo" href="#top"><span>re:</span>trouve<i></i></a><p>Ton coin tranquille pour chiner mieux.</p><p>Projet indépendant de Vinted.</p></footer>
+  </body>
+</html>
