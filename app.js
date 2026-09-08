@@ -225,11 +225,12 @@ $('#searchForm').addEventListener('submit', (event) => {
   event.preventDefault();
   if (!event.currentTarget.reportValidity()) return;
   const query = getQuery();
-  const vintedUrl = buildVintedSearchUrl(query);
-  const vintedWindow = window.open(vintedUrl, '_blank');
-  if (vintedWindow) vintedWindow.opener = null;
-  else window.location.assign(vintedUrl);
-  showToast('Recherche ouverte directement sur Vinted');
+  if (!window.RETROUVE_CONFIG?.apiUrl?.trim() && !getSearchEngineId()) {
+    openSourceDialog();
+    showToast('Connecte une source pour récupérer les annonces');
+    return;
+  }
+  searchListings(query);
 });
 $('#resetFilters').addEventListener('click', () => { $('#searchForm').reset(); state.query = {}; state.listings = [...DEMO_LISTINGS]; renderListings(); });
 $('#emptyReset').addEventListener('click', () => { state.query = {}; $('#searchForm').reset(); renderListings(); });
@@ -293,5 +294,5 @@ $('#analyzePhoto').addEventListener('click', async () => {
   } catch (error) { message.textContent = 'L’analyse n’a pas pu être chargée. Tu peux continuer sans elle.'; } finally { button.disabled = false; button.innerHTML = '<span>✦</span> Analyser à nouveau'; }
 });
 
-$('#submitLabel').textContent = 'Rechercher sur Vinted';
+if (!window.RETROUVE_CONFIG?.apiUrl?.trim()) $('#submitLabel').textContent = getSearchEngineId() ? 'Afficher les annonces ici' : 'Configurer les résultats';
 readProfile(); persistCollections(); renderListings();
