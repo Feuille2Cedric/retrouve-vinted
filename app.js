@@ -76,44 +76,30 @@ function getSearchEngineId() {
 
 let googleSearchPromise;
 let preferGoogleImages = false;
+let googleResultsObserved = false;
 function loadGoogleSearch() {
   if (googleSearchPromise) return googleSearchPromise;
-  const engineId = getSearchEngineId();
   googleSearchPromise = new Promise((resolve, reject) => {
-    const fail = (error) => {
-      googleSearchPromise = null;
-      reject(error);
-    };
-    const timeout = setTimeout(() => fail(new Error('Google Search timeout')), 12000);
-    window.__gcse = {
-      parsetags: 'explicit',
-      callback() {
-        clearTimeout(timeout);
-        try {
-          window.google.search.cse.element.render({
-            div: 'googleResultsHost',
-            tag: 'searchresults-only',
-            gname: 'vinted-results',
-            attributes: {
-              linkTarget: '_blank',
-              enableImageSearch: true,
-              defaultToImageSearch: true,
-              imageSearchLayout: 'classic',
-              imageSearchResultSetSize: 'large',
-              webSearchResultSetSize: 'large',
-              noResultsString: 'Aucune annonce indexée pour cette recherche.',
-            },
-          });
+    let attempts = 0;
+    const waitForElement = () => {
+      const element = window.google?.search?.cse?.element?.getElement('vinted-results');
+      if (element) {
+        if (!googleResultsObserved) {
+          googleResultsObserved = true;
           observeGoogleResults();
-          resolve();
-        } catch (error) { fail(error); }
-      },
+        }
+        resolve(element);
+        return;
+      }
+      attempts += 1;
+      if (attempts >= 100) {
+        googleSearchPromise = null;
+        reject(new Error('Google Search timeout'));
+        return;
+      }
+      setTimeout(waitForElement, 100);
     };
-    const script = document.createElement('script');
-    script.async = true;
-    script.src = `https://cse.google.com/cse.js?cx=${encodeURIComponent(engineId)}`;
-    script.onerror = () => { clearTimeout(timeout); fail(new Error('Google Search unavailable')); };
-    document.head.appendChild(script);
+    waitForElement();
   });
   return googleSearchPromise;
 }
@@ -125,9 +111,7 @@ function googleQuery(query) {
 
 async function executeGoogleSearch(query) {
   preferGoogleImages = true;
-  await loadGoogleSearch();
-  const element = window.google?.search?.cse?.element?.getElement('vinted-results');
-  if (!element) throw new Error('Search element missing');
+  const element = await loadGoogleSearch();
   element.execute(googleQuery(query));
 }
 
