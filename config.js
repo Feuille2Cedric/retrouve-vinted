@@ -2,5 +2,5 @@
 // Renseigne uniquement l'URL publique de ton propre intermédiaire API autorisé.
 window.RETROUVE_CONFIG = {
   apiUrl: '',
-  googleSearchEngineId: 'f643a06b5bae74912',
+  googleSearchEngineId: '',
 };

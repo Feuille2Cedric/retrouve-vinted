@@ -34,7 +34,7 @@ Ce document regroupe, dans l'ordre chronologique, les demandes utilisateur qui o
 
 ## 7. Google Programmable Search
 
-> `<script async src="https://cse.google.com/cse.js?cx=f643a06b5bae74912"></script>`
+> `<script async src="https://cse.google.com/cse.js?cx=[IDENTIFIANT_DU_MOTEUR]"></script>`
 >
 > `<div class="gcse-search"></div>`
 >

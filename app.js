@@ -79,10 +79,31 @@ let preferGoogleImages = false;
 let googleResultsObserved = false;
 function loadGoogleSearch() {
   if (googleSearchPromise) return googleSearchPromise;
+  const engineId = getSearchEngineId();
   googleSearchPromise = new Promise((resolve, reject) => {
     let attempts = 0;
-    const waitForElement = () => {
-      const element = window.google?.search?.cse?.element?.getElement('vinted-results');
+    let renderRequested = false;
+    const waitForLibrary = () => {
+      const api = window.google?.search?.cse?.element;
+      let element = api?.getElement('vinted-results');
+      if (api?.render && !element && !renderRequested) {
+        renderRequested = true;
+        api.render({
+          div: 'googleResultsHost',
+          tag: 'searchresults-only',
+          gname: 'vinted-results',
+          attributes: {
+            linkTarget: '_blank',
+            enableImageSearch: true,
+            defaultToImageSearch: true,
+            imageSearchLayout: 'classic',
+            imageSearchResultSetSize: 'large',
+            webSearchResultSetSize: 'large',
+            noResultsString: 'Aucune annonce indexée pour cette recherche.',
+          },
+        });
+        element = api.getElement('vinted-results');
+      }
       if (element) {
         if (!googleResultsObserved) {
           googleResultsObserved = true;
@@ -97,9 +118,17 @@ function loadGoogleSearch() {
         reject(new Error('Google Search timeout'));
         return;
       }
-      setTimeout(waitForElement, 100);
+      setTimeout(waitForLibrary, 100);
     };
-    waitForElement();
+    const script = document.createElement('script');
+    script.async = true;
+    script.src = `https://cse.google.com/cse.js?cx=${encodeURIComponent(engineId)}`;
+    script.onerror = () => {
+      googleSearchPromise = null;
+      reject(new Error('Google Search unavailable'));
+    };
+    document.head.appendChild(script);
+    waitForLibrary();
   });
   return googleSearchPromise;
 }
@@ -117,7 +146,6 @@ async function executeGoogleSearch(query) {
 
 function decorateGoogleResults() {
   document.body.classList.remove('gsc-overflow-hidden');
-  dockGoogleResults();
   const imageTab = $$('#googleResultsHost .gsc-tabHeader').find((tab) => /image/i.test(tab.textContent));
   if (preferGoogleImages && imageTab && !imageTab.classList.contains('gsc-tabhActive')) {
     preferGoogleImages = false;
@@ -192,25 +220,12 @@ function applyGoogleView() {
   $('#feedTitle').textContent = state.view === 'favorites' ? 'Tes coups de cœur' : (state.query.type ? `${state.query.type} rien que pour toi` : 'Les annonces Vinted');
 }
 
-function dockGoogleResults() {
-  const host = $('#googleResultsHost');
-  const overlay = document.querySelector('.gsc-results-wrapper-overlay');
-  if (!overlay) return;
-  if (!host.contains(overlay) && !overlay.contains(host)) host.appendChild(overlay);
-  const forcedStyles = {
-    position: 'static', inset: 'auto', top: 'auto', left: 'auto', right: 'auto', bottom: 'auto', width: '100%',
-    height: 'auto', maxHeight: 'none', margin: '0', padding: '0', overflow: 'visible', background: 'transparent',
-    border: '0', boxShadow: 'none', zIndex: 'auto',
-  };
-  Object.entries(forcedStyles).forEach(([property, value]) => {
-    const cssProperty = property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-    overlay.style.setProperty(cssProperty, value, 'important');
-  });
-  document.querySelectorAll('.gsc-modal-background-image, .gsc-results-close-btn').forEach((element) => element.style.setProperty('display', 'none', 'important'));
-}
-
 function observeGoogleResults() {
-  new MutationObserver(decorateGoogleResults).observe(document.body, { childList: true, subtree: true });
+  let timer;
+  new MutationObserver(() => {
+    clearTimeout(timer);
+    timer = setTimeout(decorateGoogleResults, 80);
+  }).observe($('#googleResultsHost'), { childList: true, subtree: true });
   decorateGoogleResults();
 }
 
