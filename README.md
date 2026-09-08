@@ -48,7 +48,7 @@ L'identifiant est mémorisé dans le navigateur. Le site accepte aussi bien l'id
 
 > Google Programmable Search dépend de son propre index. Certaines annonces récentes peuvent être absentes et la note du vendeur n'est pas fournie.
 
-Quand une annonce indexée a déjà expiré, re:trouve affiche aussi un bouton orange qui relance une recherche actuelle à partir de son titre. Cela évite de rester bloqué sur une ancienne URL Vinted devenue invalide.
+La photo et le bouton « Voir l’annonce » ouvrent l’URL de l’annonce indexée, sans la remplacer par une recherche générale. Si l’annonce a expiré, Vinted peut afficher une page indisponible.
 
 ### API personnalisée
 

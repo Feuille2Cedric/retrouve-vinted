@@ -160,7 +160,7 @@ function decorateGoogleResults() {
   $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult-column').forEach((result) => {
     const titleNode = result.querySelector('.gs-title');
     const imageNode = result.querySelector('img.gs-image');
-    const link = result.querySelector('a.gs-title, a.gs-image') || imageNode?.closest('a') || result.querySelector('a[href]');
+    const link = result.querySelector('a.gs-title[href]') || result.querySelector('a.gs-image[href]') || imageNode?.closest('a') || result.querySelector('a[href]');
     if (!link?.href) return;
     const url = result.dataset.originalUrl || link.href;
     result.dataset.originalUrl = url;
@@ -171,7 +171,6 @@ function decorateGoogleResults() {
     result.hidden = false;
     const fallbackTitle = [state.query.brand, state.query.details, state.query.type].filter(Boolean).join(' ');
     const title = (titleNode?.textContent.trim() || imageNode?.alt?.trim() || fallbackTitle || 'Annonce Vinted').replace(/\s*[|–-]\s*Vinted\s*$/i, '').trim();
-    const freshUrl = buildVintedSearchUrl({ ...state.query, details: title });
     const favoriteId = `google:${url}`;
     result.dataset.favoriteId = favoriteId;
     if (result.classList.contains('gsc-imageResult-column')) {
@@ -189,10 +188,13 @@ function decorateGoogleResults() {
     }
     result.querySelectorAll('a[href]').forEach((resultLink) => {
       if (resultLink.classList.contains('google-safe-link')) return;
-      resultLink.href = freshUrl;
+      resultLink.href = url;
+      resultLink.removeAttribute('data-ctorig');
+      resultLink.removeAttribute('onmousedown');
+      resultLink.removeAttribute('onclick');
       resultLink.target = '_blank';
       resultLink.rel = 'noopener noreferrer';
-      resultLink.title = 'Relancer une recherche actuelle sur Vinted';
+      resultLink.title = 'Ouvrir cette annonce sur Vinted';
     });
     if (!result.querySelector('.google-dismiss')) {
       const button = document.createElement('button');
@@ -215,10 +217,10 @@ function decorateGoogleResults() {
       const price = document.createElement('strong'); price.textContent = priceMatch?.[0] || 'Voir le prix';
       const freshLink = document.createElement('a');
       freshLink.className = 'google-safe-link';
-      freshLink.href = freshUrl;
+      freshLink.href = url;
       freshLink.target = '_blank';
       freshLink.rel = 'noopener noreferrer';
-      freshLink.textContent = 'Voir sur Vinted →';
+      freshLink.textContent = 'Voir l’annonce →';
       bottom.append(price, freshLink); meta.append(brand, cardTitle, details, bottom); result.appendChild(meta);
     }
   });
@@ -248,6 +250,15 @@ function dockGoogleResults() {
 
 function observeGoogleResults() {
   const host = $('#googleResultsHost');
+  // Keep native link navigation, without Google's image preview/click handlers.
+  const keepListingLink = (event) => {
+    const link = event.target.closest('a[href]');
+    const result = link?.closest('.gsc-webResult.gsc-result, .gsc-imageResult-column');
+    if (!result?.dataset.originalUrl) return;
+    link.href = result.dataset.originalUrl;
+    event.stopImmediatePropagation();
+  };
+  ['click', 'auxclick', 'mousedown'].forEach((type) => host.addEventListener(type, keepListingLink, true));
   host.addEventListener('click', (event) => {
     const button = event.target.closest('.google-favorite, .google-dismiss');
     if (!button) return;
