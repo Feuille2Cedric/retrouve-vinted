@@ -145,7 +145,9 @@ function decorateGoogleResults() {
     else imageTab.click();
   }
   $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult-column').forEach((result) => {
-    const link = result.querySelector('a.gs-title');
+    const titleNode = result.querySelector('.gs-title');
+    const imageNode = result.querySelector('img.gs-image');
+    const link = result.querySelector('a.gs-title, a.gs-image') || imageNode?.closest('a') || result.querySelector('a[href]');
     if (!link?.href) return;
     const url = result.dataset.originalUrl || link.href;
     result.dataset.originalUrl = url;
@@ -153,7 +155,8 @@ function decorateGoogleResults() {
     result.dataset.sold = /\b(vendu|vendue|sold|verkauft|vendido|vendida|esaurito)\b/.test(indexedText) ? 'true' : 'false';
     if (state.googleRejected[url] || result.dataset.sold === 'true') { result.hidden = true; return; }
     result.hidden = false;
-    const title = link.textContent.replace(/\s*[|–-]\s*Vinted\s*$/i, '').trim();
+    const fallbackTitle = [state.query.brand, state.query.details, state.query.type].filter(Boolean).join(' ');
+    const title = (titleNode?.textContent.trim() || imageNode?.alt?.trim() || fallbackTitle || 'Annonce Vinted').replace(/\s*[|–-]\s*Vinted\s*$/i, '').trim();
     const freshUrl = buildVintedSearchUrl({ ...state.query, details: title });
     const favoriteId = `google:${url}`;
     result.dataset.favoriteId = favoriteId;
@@ -192,7 +195,7 @@ function decorateGoogleResults() {
       const meta = document.createElement('div'); meta.className = 'google-card-meta';
       const brand = document.createElement('p'); brand.className = 'google-card-brand'; brand.textContent = state.query.brand || 'Vinted';
       const cardTitle = document.createElement('h3'); cardTitle.textContent = title;
-      const details = document.createElement('p'); details.className = 'google-card-details'; details.textContent = [state.query.size && `Taille ${state.query.size}`, state.query.color, 'Annonce indexée'].filter(Boolean).join(' · ');
+      const details = document.createElement('p'); details.className = 'google-card-details'; details.textContent = [state.query.details, state.query.size && `Taille ${state.query.size}`, state.query.color, state.query.maxPrice && `Maximum ${state.query.maxPrice} €`, 'Annonce indexée'].filter(Boolean).join(' · ');
       const priceMatch = result.textContent.match(/\b\d+(?:[,.]\d{1,2})?\s*€/);
       const bottom = document.createElement('div'); bottom.className = 'google-card-bottom';
       const price = document.createElement('strong'); price.textContent = priceMatch?.[0] || 'Voir le prix';
