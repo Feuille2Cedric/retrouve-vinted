@@ -133,16 +133,16 @@ async function executeGoogleSearch(query) {
     checks += 1;
     dockGoogleResults();
     decorateGoogleResults();
-    if ($('#googleResultsHost .gsc-result, #googleResultsHost .gsc-imageResult') || checks >= 40) clearInterval(waitForResults);
+    if ($('#googleResultsHost .gsc-imageResult') || checks >= 40) clearInterval(waitForResults);
   }, 250);
 }
 
 function decorateGoogleResults() {
   document.body.classList.remove('gsc-overflow-hidden');
   const imageTab = $$('#googleResultsHost .gsc-tabHeader').find((tab) => /image/i.test(tab.textContent));
-  if (preferGoogleImages && imageTab && !imageTab.classList.contains('gsc-tabhActive')) {
-    preferGoogleImages = false;
-    imageTab.click();
+  if (preferGoogleImages && imageTab) {
+    if (imageTab.classList.contains('gsc-tabhActive')) preferGoogleImages = false;
+    else imageTab.click();
   }
   $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult').forEach((result) => {
     const link = result.querySelector('a.gs-title');
