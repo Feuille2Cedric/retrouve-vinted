@@ -157,6 +157,19 @@ function decorateGoogleResults() {
     const freshUrl = buildVintedSearchUrl({ ...state.query, details: title });
     const favoriteId = `google:${url}`;
     result.dataset.favoriteId = favoriteId;
+    if (result.classList.contains('gsc-imageResult-column')) {
+      const nativeImageBox = result.querySelector('.gs-image-box');
+      const oldPlaceholder = result.querySelector('.google-image-placeholder');
+      if (nativeImageBox) {
+        nativeImageBox.classList.add('google-image-frame');
+        oldPlaceholder?.remove();
+      } else if (!oldPlaceholder) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'google-image-frame google-image-placeholder';
+        placeholder.innerHTML = '<span>Photo indisponible</span>';
+        result.prepend(placeholder);
+      }
+    }
     result.querySelectorAll('a[href]').forEach((resultLink) => {
       if (resultLink.classList.contains('google-safe-link')) return;
       resultLink.href = freshUrl;
