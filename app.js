@@ -1,24 +1,14 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
-const DEMO_LISTINGS = [
-  { id: 'demo-1', brand: 'Nike', title: 'Air Max 90 blanc cassé et vert', size: '38', price: 54, country: 'France', condition: 'Très bon état', sellerRating: 4.9, reviewCount: 47, image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=700&q=80', type: 'Baskets', color: 'vert', createdAt: 12 },
-  { id: 'demo-2', brand: 'Sézane', title: 'Veste de travail Will écrue', size: 'M', price: 72, country: 'France', condition: 'Bon état', sellerRating: 4.6, reviewCount: 18, image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?auto=format&fit=crop&w=700&q=80', type: 'Veste', color: 'écru', createdAt: 10 },
-  { id: 'demo-3', brand: 'New Balance', title: 'Baskets 530 argent et marine', size: '39', price: 68, country: 'Belgique', condition: 'Très bon état', sellerRating: null, reviewCount: 0, image: 'https://images.unsplash.com/photo-1539185441755-769473a23570?auto=format&fit=crop&w=700&q=80', type: 'Baskets', color: 'gris', createdAt: 11 },
-  { id: 'demo-4', brand: 'Carhartt', title: 'Veste Detroit vintage marron', size: 'L', price: 95, country: 'France', condition: 'Bon état', sellerRating: 4.2, reviewCount: 9, image: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=700&q=80', type: 'Veste', color: 'marron', createdAt: 8 },
-  { id: 'demo-5', brand: 'Adidas', title: 'Samba OG cuir blanc', size: '40', price: 61, country: 'Italie', condition: 'Très bon état', sellerRating: 3.8, reviewCount: 5, image: 'https://images.unsplash.com/photo-1518002171953-a080ee817e1f?auto=format&fit=crop&w=700&q=80', type: 'Baskets', color: 'blanc', createdAt: 9 },
-  { id: 'demo-6', brand: 'Arket', title: 'Pull col rond laine mérinos', size: 'S', price: 39, country: 'France', condition: 'Très bon état', sellerRating: 5, reviewCount: 124, image: 'https://images.unsplash.com/photo-1576566588028-4147f3842f27?auto=format&fit=crop&w=700&q=80', type: 'Pull', color: 'bleu marine', createdAt: 6 },
-  { id: 'demo-7', brand: 'Levi’s', title: 'Jean 501 coupe droite vintage', size: '38', price: 32, country: 'Pays-Bas', condition: 'Bon état', sellerRating: null, reviewCount: 0, image: 'https://images.unsplash.com/photo-1542272604-787c3835535d?auto=format&fit=crop&w=700&q=80', type: 'Jean', color: 'bleu', createdAt: 7 },
-  { id: 'demo-8', brand: 'COS', title: 'Manteau long en laine mélangée', size: 'M', price: 84, country: 'Belgique', condition: 'Très bon état', sellerRating: 4.8, reviewCount: 31, image: 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=700&q=80', type: 'Manteau', color: 'beige', createdAt: 4 },
-  { id: 'demo-9', brand: 'Converse', title: 'Chuck 70 montantes noires', size: '42', price: 45, country: 'France', condition: 'Bon état', sellerRating: 2.7, reviewCount: 3, image: 'https://images.unsplash.com/photo-1494496195158-c3becb4f2475?auto=format&fit=crop&w=700&q=80', type: 'Baskets', color: 'noir', createdAt: 5 },
-];
+const DEMO_LISTINGS = [];
 
 const state = {
   listings: [...DEMO_LISTINGS],
   rejected: new Set(JSON.parse(localStorage.getItem('retrouve-rejected') || '[]')),
   favorites: new Set(JSON.parse(localStorage.getItem('retrouve-favorites') || '[]')),
   googleRejected: JSON.parse(localStorage.getItem('retrouve-google-rejected') || '{}'),
-  view: 'all', source: 'demo', query: {},
+  view: 'all', source: 'idle', query: {},
 };
 
 const fields = { type: $('#itemType'), brand: $('#brand'), details: $('#details'), size: $('#size'), maxPrice: $('#maxPrice'), color: $('#color'), minRating: $('#minRating'), allowUnrated: $('#allowUnrated'), market: $('#market') };
@@ -148,11 +138,14 @@ function decorateGoogleResults() {
   $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult').forEach((result) => {
     const link = result.querySelector('a.gs-title');
     if (!link?.href) return;
-    const url = link.href;
+    const url = result.dataset.originalUrl || link.href;
+    result.dataset.originalUrl = url;
     if (state.googleRejected[url]) { result.hidden = true; return; }
     result.hidden = false;
     const title = link.textContent.replace(/\s*[|–-]\s*Vinted\s*$/i, '').trim();
     const freshUrl = buildVintedSearchUrl({ ...state.query, details: title });
+    const favoriteId = `google:${url}`;
+    result.dataset.favoriteId = favoriteId;
     result.querySelectorAll('a[href]').forEach((resultLink) => {
       if (resultLink.classList.contains('google-safe-link')) return;
       resultLink.href = freshUrl;
@@ -160,24 +153,55 @@ function decorateGoogleResults() {
       resultLink.rel = 'noopener noreferrer';
       resultLink.title = 'Relancer une recherche actuelle sur Vinted';
     });
-    if (result.querySelector('.google-dismiss')) return;
-    const button = document.createElement('button');
-    button.type = 'button'; button.className = 'google-dismiss'; button.textContent = '×'; button.title = 'Écarter cette annonce'; button.setAttribute('aria-label', 'Écarter cette annonce');
-    button.addEventListener('click', () => {
-      state.googleRejected[url] = { title: link.textContent.trim(), url };
-      result.hidden = true; persistCollections(); showToast('Annonce écartée — tu peux la restaurer plus tard');
-    });
-    result.appendChild(button);
-    if (!result.querySelector('.google-safe-link')) {
+    if (!result.querySelector('.google-dismiss')) {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'google-dismiss'; button.textContent = '×'; button.title = 'Écarter cette annonce'; button.setAttribute('aria-label', 'Écarter cette annonce');
+      button.addEventListener('click', () => {
+        state.googleRejected[url] = { title: link.textContent.trim(), url };
+        result.hidden = true; persistCollections(); showToast('Annonce écartée — tu peux la restaurer plus tard');
+      });
+      result.appendChild(button);
+    }
+    if (!result.querySelector('.google-favorite')) {
+      const favorite = document.createElement('button');
+      favorite.type = 'button'; favorite.className = `google-favorite${state.favorites.has(favoriteId) ? ' is-favorite' : ''}`;
+      favorite.textContent = state.favorites.has(favoriteId) ? '♥' : '♡'; favorite.setAttribute('aria-label', 'Ajouter aux favoris');
+      favorite.addEventListener('click', () => {
+        state.favorites.has(favoriteId) ? state.favorites.delete(favoriteId) : state.favorites.add(favoriteId);
+        favorite.classList.toggle('is-favorite', state.favorites.has(favoriteId)); favorite.textContent = state.favorites.has(favoriteId) ? '♥' : '♡';
+        persistCollections(); showToast(state.favorites.has(favoriteId) ? 'Ajouté à tes coups de cœur' : 'Retiré des favoris');
+        applyGoogleView();
+      });
+      result.appendChild(favorite);
+    }
+    if (!result.querySelector('.google-card-meta')) {
+      const meta = document.createElement('div'); meta.className = 'google-card-meta';
+      const brand = document.createElement('p'); brand.className = 'google-card-brand'; brand.textContent = state.query.brand || 'Vinted';
+      const cardTitle = document.createElement('h3'); cardTitle.textContent = title;
+      const details = document.createElement('p'); details.className = 'google-card-details'; details.textContent = [state.query.size && `Taille ${state.query.size}`, state.query.color, 'Annonce indexée'].filter(Boolean).join(' · ');
+      const priceMatch = result.textContent.match(/\b\d+(?:[,.]\d{1,2})?\s*€/);
+      const bottom = document.createElement('div'); bottom.className = 'google-card-bottom';
+      const price = document.createElement('strong'); price.textContent = priceMatch?.[0] || 'Voir le prix';
       const freshLink = document.createElement('a');
       freshLink.className = 'google-safe-link';
       freshLink.href = freshUrl;
       freshLink.target = '_blank';
       freshLink.rel = 'noopener noreferrer';
-      freshLink.textContent = 'Rechercher cet article sur Vinted →';
-      result.appendChild(freshLink);
+      freshLink.textContent = 'Voir sur Vinted →';
+      bottom.append(price, freshLink); meta.append(brand, cardTitle, details, bottom); result.appendChild(meta);
     }
   });
+  applyGoogleView();
+}
+
+function applyGoogleView() {
+  $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult').forEach((result) => {
+    const url = result.dataset.originalUrl;
+    const isRejected = Boolean(url && state.googleRejected[url]);
+    const isFavorite = Boolean(result.dataset.favoriteId && state.favorites.has(result.dataset.favoriteId));
+    result.hidden = isRejected || (state.view === 'favorites' && !isFavorite);
+  });
+  $('#feedTitle').textContent = state.view === 'favorites' ? 'Tes coups de cœur' : (state.query.type ? `${state.query.type} rien que pour toi` : 'Les annonces Vinted');
 }
 
 function dockGoogleResults() {
@@ -291,7 +315,17 @@ $('#searchForm').addEventListener('submit', (event) => {
 $('#resetFilters').addEventListener('click', () => { $('#searchForm').reset(); state.query = {}; state.listings = [...DEMO_LISTINGS]; renderListings(); });
 $('#emptyReset').addEventListener('click', () => { state.query = {}; $('#searchForm').reset(); renderListings(); });
 $('#sortSelect').addEventListener('change', renderListings);
-$$('.nav-link').forEach((button) => button.addEventListener('click', () => { $$('.nav-link').forEach((item) => item.classList.remove('active')); button.classList.add('active'); state.view = button.dataset.view; renderListings(); }));
+$$('.nav-link').forEach((button) => button.addEventListener('click', () => {
+  $$('.nav-link').forEach((item) => item.classList.remove('active'));
+  button.classList.add('active');
+  state.view = button.dataset.view;
+  if (state.source === 'google') {
+    $('#googleResultsWrap').hidden = false;
+    $('#listingGrid').hidden = true;
+    $('#emptyState').hidden = true;
+    applyGoogleView();
+  } else renderListings();
+}));
 
 const profileDialog = $('#profileDialog');
 function openProfile() { $('#nameInput').value = localStorage.getItem('retrouve-name') || ''; profileDialog.showModal(); setTimeout(() => $('#nameInput').focus(), 50); }
@@ -315,7 +349,7 @@ $('#rejectedList').addEventListener('click', (event) => {
   persistCollections(); renderRejected(); if (state.source !== 'google') renderListings();
 });
 $('#restoreAll').addEventListener('click', () => {
-  state.rejected.clear(); state.googleRejected = {}; $$('#googleResultsHost .gsc-webResult.gsc-result').forEach((item) => { item.hidden = false; });
+  state.rejected.clear(); state.googleRejected = {}; applyGoogleView();
   persistCollections(); renderRejected(); if (state.source !== 'google') renderListings();
 });
 function openSourceDialog() { $('#searchEngineId').value = getSearchEngineId(); $('#sourceDialog').showModal(); }

@@ -31,13 +31,11 @@ re:trouve rassemble sur une seule interface les critères utiles pour chercher u
 
 ## Modes de résultats
 
-### Mode aperçu
-
-Le site contient quelques cartes de démonstration pour tester immédiatement les favoris, le tri et les exclusions. Ces cartes ne représentent pas des annonces Vinted en direct.
-
 ### Google Programmable Search
 
 Cette solution sans backend affiche directement dans la page les annonces Vinted indexées par Google.
+
+Les anciennes cartes de démonstration ont été retirées. Les résultats illustrés utilisent maintenant la même composition visuelle : photo, marque, titre, détails disponibles, favori, exclusion et lien d'action.
 
 1. Créer un moteur sur [Google Programmable Search](https://programmablesearchengine.google.com/controlpanel/create).
 2. Ajouter `www.vinted.fr/items/*` dans **Sites à rechercher**.
