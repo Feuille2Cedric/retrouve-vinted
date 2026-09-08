@@ -225,12 +225,11 @@ $('#searchForm').addEventListener('submit', (event) => {
   event.preventDefault();
   if (!event.currentTarget.reportValidity()) return;
   const query = getQuery();
-  if (!window.RETROUVE_CONFIG?.apiUrl?.trim() && !getSearchEngineId()) {
-    openSourceDialog();
-    showToast('Connecte le moteur pour afficher les résultats ici');
-    return;
-  }
-  searchListings(query);
+  const vintedUrl = buildVintedSearchUrl(query);
+  const vintedWindow = window.open(vintedUrl, '_blank');
+  if (vintedWindow) vintedWindow.opener = null;
+  else window.location.assign(vintedUrl);
+  showToast('Recherche ouverte directement sur Vinted');
 });
 $('#resetFilters').addEventListener('click', () => { $('#searchForm').reset(); state.query = {}; state.listings = [...DEMO_LISTINGS]; renderListings(); });
 $('#emptyReset').addEventListener('click', () => { state.query = {}; $('#searchForm').reset(); renderListings(); });
@@ -263,7 +262,11 @@ $('#restoreAll').addEventListener('click', () => {
   persistCollections(); renderRejected(); if (state.source !== 'google') renderListings();
 });
 function openSourceDialog() { $('#searchEngineId').value = getSearchEngineId(); $('#sourceDialog').showModal(); }
-$('#sourceHelp').addEventListener('click', openSourceDialog); $('#configureResults').addEventListener('click', openSourceDialog); $('#emptyConfigure').addEventListener('click', openSourceDialog); $('#closeSource').addEventListener('click', () => $('#sourceDialog').close());
+function showIntegratedResults() {
+  if (window.RETROUVE_CONFIG?.apiUrl?.trim() || getSearchEngineId()) searchListings(getQuery());
+  else openSourceDialog();
+}
+$('#sourceHelp').addEventListener('click', openSourceDialog); $('#configureResults').addEventListener('click', showIntegratedResults); $('#emptyConfigure').addEventListener('click', showIntegratedResults); $('#closeSource').addEventListener('click', () => $('#sourceDialog').close());
 $('#saveSearchEngine').addEventListener('click', () => {
   const rawValue = $('#searchEngineId').value.trim();
   const urlMatch = rawValue.match(/[?&]cx=([a-z0-9:_-]+)/i);
@@ -290,5 +293,5 @@ $('#analyzePhoto').addEventListener('click', async () => {
   } catch (error) { message.textContent = 'L’analyse n’a pas pu être chargée. Tu peux continuer sans elle.'; } finally { button.disabled = false; button.innerHTML = '<span>✦</span> Analyser à nouveau'; }
 });
 
-if (!window.RETROUVE_CONFIG?.apiUrl?.trim()) $('#submitLabel').textContent = getSearchEngineId() ? 'Afficher les annonces ici' : 'Configurer les résultats';
+$('#submitLabel').textContent = 'Rechercher sur Vinted';
 readProfile(); persistCollections(); renderListings();
