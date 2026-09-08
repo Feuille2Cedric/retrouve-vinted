@@ -121,7 +121,7 @@ function loadGoogleSearch() {
 
 function googleQuery(query) {
   const domain = `www.vinted.${query.market || 'fr'}`;
-  return [query.brand, query.details, query.type, query.color, query.size && `taille ${query.size}`, `site:${domain}/items/`].filter(Boolean).join(' ');
+  return [query.brand, query.details, query.type, query.color, query.size && `taille ${query.size}`, '-vendu', '-vendue', '-sold', '-verkauft', '-vendido', `site:${domain}/items/`].filter(Boolean).join(' ');
 }
 
 async function executeGoogleSearch(query) {
@@ -149,7 +149,9 @@ function decorateGoogleResults() {
     if (!link?.href) return;
     const url = result.dataset.originalUrl || link.href;
     result.dataset.originalUrl = url;
-    if (state.googleRejected[url]) { result.hidden = true; return; }
+    const indexedText = result.textContent.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    result.dataset.sold = /\b(vendu|vendue|sold|verkauft|vendido|vendida|esaurito)\b/.test(indexedText) ? 'true' : 'false';
+    if (state.googleRejected[url] || result.dataset.sold === 'true') { result.hidden = true; return; }
     result.hidden = false;
     const title = link.textContent.replace(/\s*[|–-]\s*Vinted\s*$/i, '').trim();
     const freshUrl = buildVintedSearchUrl({ ...state.query, details: title });
@@ -165,24 +167,12 @@ function decorateGoogleResults() {
     if (!result.querySelector('.google-dismiss')) {
       const button = document.createElement('button');
       button.type = 'button'; button.className = 'google-dismiss'; button.textContent = '×'; button.title = 'Écarter cette annonce'; button.setAttribute('aria-label', 'Écarter cette annonce');
-      button.addEventListener('click', (event) => {
-        event.preventDefault(); event.stopPropagation();
-        state.googleRejected[url] = { title: link.textContent.trim(), url };
-        result.hidden = true; persistCollections(); showToast('Annonce écartée — tu peux la restaurer plus tard');
-      });
       result.appendChild(button);
     }
     if (!result.querySelector('.google-favorite')) {
       const favorite = document.createElement('button');
       favorite.type = 'button'; favorite.className = `google-favorite${state.favorites.has(favoriteId) ? ' is-favorite' : ''}`;
       favorite.textContent = state.favorites.has(favoriteId) ? '♥' : '♡'; favorite.setAttribute('aria-label', 'Ajouter aux favoris');
-      favorite.addEventListener('click', (event) => {
-        event.preventDefault(); event.stopPropagation();
-        state.favorites.has(favoriteId) ? state.favorites.delete(favoriteId) : state.favorites.add(favoriteId);
-        favorite.classList.toggle('is-favorite', state.favorites.has(favoriteId)); favorite.textContent = state.favorites.has(favoriteId) ? '♥' : '♡';
-        persistCollections(); showToast(state.favorites.has(favoriteId) ? 'Ajouté à tes coups de cœur' : 'Retiré des favoris');
-        applyGoogleView();
-      });
       result.appendChild(favorite);
     }
     if (!result.querySelector('.google-card-meta')) {
@@ -209,8 +199,9 @@ function applyGoogleView() {
   $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult-column').forEach((result) => {
     const url = result.dataset.originalUrl;
     const isRejected = Boolean(url && state.googleRejected[url]);
+    const isSold = result.dataset.sold === 'true';
     const isFavorite = Boolean(result.dataset.favoriteId && state.favorites.has(result.dataset.favoriteId));
-    result.hidden = isRejected || (state.view === 'favorites' && !isFavorite);
+    result.hidden = isSold || isRejected || (state.view === 'favorites' && !isFavorite);
   });
   $('#feedTitle').textContent = state.view === 'favorites' ? 'Tes coups de cœur' : (state.query.type ? `${state.query.type} rien que pour toi` : 'Les annonces Vinted');
 }
@@ -225,11 +216,32 @@ function dockGoogleResults() {
 }
 
 function observeGoogleResults() {
+  const host = $('#googleResultsHost');
+  host.addEventListener('click', (event) => {
+    const button = event.target.closest('.google-favorite, .google-dismiss');
+    if (!button) return;
+    event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
+    const result = button.closest('.gsc-webResult.gsc-result, .gsc-imageResult-column');
+    if (!result) return;
+    const url = result.dataset.originalUrl;
+    const favoriteId = result.dataset.favoriteId;
+    if (button.classList.contains('google-dismiss')) {
+      const title = result.querySelector('.google-card-meta h3, a.gs-title')?.textContent.trim() || 'Annonce Vinted';
+      state.googleRejected[url] = { title, url };
+      showToast('Annonce écartée — tu peux la restaurer plus tard');
+    } else {
+      state.favorites.has(favoriteId) ? state.favorites.delete(favoriteId) : state.favorites.add(favoriteId);
+      button.classList.toggle('is-favorite', state.favorites.has(favoriteId));
+      button.textContent = state.favorites.has(favoriteId) ? '♥' : '♡';
+      showToast(state.favorites.has(favoriteId) ? 'Ajouté à tes coups de cœur' : 'Retiré des favoris');
+    }
+    persistCollections(); applyGoogleView();
+  }, true);
   let timer;
   new MutationObserver(() => {
     clearTimeout(timer);
     timer = setTimeout(decorateGoogleResults, 80);
-  }).observe($('#googleResultsHost'), { childList: true, subtree: true });
+  }).observe(host, { childList: true, subtree: true });
   decorateGoogleResults();
 }
 
