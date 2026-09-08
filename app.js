@@ -121,7 +121,20 @@ function loadGoogleSearch() {
 
 function googleQuery(query) {
   const domain = `www.vinted.${query.market || 'fr'}`;
-  return [query.brand, query.details, query.type, query.color, query.size && `taille ${query.size}`, '-vendu', '-vendue', '-sold', '-verkauft', '-vendido', `site:${domain}/items/`].filter(Boolean).join(' ');
+  return [query.brand && `"${query.brand}"`, query.details, query.type && `"${query.type}"`, query.color, query.size && `"taille ${query.size}"`, '-vendu', '-vendue', '-sold', '-verkauft', '-vendido', `site:${domain}/items/`].filter(Boolean).join(' ');
+}
+
+function resultContradictsFilters(text, query) {
+  const normalized = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+  if (query.maxPrice) {
+    const price = normalized.match(/\b(\d+(?:[,.]\d{1,2})?)\s*€/);
+    if (price && Number(price[1].replace(',', '.')) > Number(query.maxPrice)) return true;
+  }
+  if (query.size) {
+    const sizes = [...normalized.matchAll(/\b(?:taille|size|grosse|taglia|talla)\s*[:\-]?\s*([a-z0-9.]+)\b/gi)].map((match) => match[1].toLowerCase());
+    if (sizes.length && !sizes.includes(String(query.size).trim().toLowerCase())) return true;
+  }
+  return false;
 }
 
 async function executeGoogleSearch(query) {
@@ -153,7 +166,8 @@ function decorateGoogleResults() {
     result.dataset.originalUrl = url;
     const indexedText = result.textContent.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     result.dataset.sold = /\b(vendu|vendue|sold|verkauft|vendido|vendida|esaurito)\b/.test(indexedText) ? 'true' : 'false';
-    if (state.googleRejected[url] || result.dataset.sold === 'true') { result.hidden = true; return; }
+    result.dataset.filterMismatch = resultContradictsFilters(result.textContent, state.query) ? 'true' : 'false';
+    if (state.googleRejected[url] || result.dataset.sold === 'true' || result.dataset.filterMismatch === 'true') { result.hidden = true; return; }
     result.hidden = false;
     const fallbackTitle = [state.query.brand, state.query.details, state.query.type].filter(Boolean).join(' ');
     const title = (titleNode?.textContent.trim() || imageNode?.alt?.trim() || fallbackTitle || 'Annonce Vinted').replace(/\s*[|–-]\s*Vinted\s*$/i, '').trim();
@@ -216,8 +230,9 @@ function applyGoogleView() {
     const url = result.dataset.originalUrl;
     const isRejected = Boolean(url && state.googleRejected[url]);
     const isSold = result.dataset.sold === 'true';
+    const contradictsFilters = result.dataset.filterMismatch === 'true';
     const isFavorite = Boolean(result.dataset.favoriteId && state.favorites.has(result.dataset.favoriteId));
-    result.hidden = isSold || isRejected || (state.view === 'favorites' && !isFavorite);
+    result.hidden = isSold || contradictsFilters || isRejected || (state.view === 'favorites' && !isFavorite);
   });
   $('#feedTitle').textContent = state.view === 'favorites' ? 'Tes coups de cœur' : (state.query.type ? `${state.query.type} rien que pour toi` : 'Les annonces Vinted');
 }
