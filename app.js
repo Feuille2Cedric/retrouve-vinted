@@ -33,7 +33,7 @@ const getQuery = () => Object.fromEntries(Object.entries(fields).map(([key, fiel
 
 function matchesQuery(item, query) {
   const haystack = `${item.type} ${item.brand} ${item.title} ${item.color} ${item.size}`.toLowerCase();
-  return (!query.type || item.type.toLowerCase() === query.type.toLowerCase())
+  return (!query.type || !item.type || String(item.type).toLowerCase() === query.type.toLowerCase())
     && (!query.brand || haystack.includes(query.brand.toLowerCase()))
     && (!query.details || query.details.toLowerCase().split(/\s+/).every((word) => haystack.includes(word)))
     && (!query.size || String(item.size).toLowerCase() === query.size.toLowerCase())
@@ -75,260 +75,188 @@ function getSearchEngineId() {
 }
 
 let googleSearchPromise;
-let preferGoogleImages = false;
-let googleResultsObserved = false;
-const googleThumbnails = new Map();
+let pendingGoogleSearch;
+let googleResultsContainer;
+let googlePageItems = [];
+const savedGoogleItems = JSON.parse(localStorage.getItem('retrouve-google-items') || '{}');
 
-function rememberGoogleThumbnails(gname, query, promos, results) {
-  for (const result of results) {
-    const image = result.thumbnailImage?.url;
-    if (result.url && image) googleThumbnails.set(result.url, image);
-  }
-  return false;
-}
-
-function addGoogleListingPhoto(result, url, title) {
-  if (!result.classList.contains('gsc-webResult') || result.querySelector('.google-listing-photo')) return;
-  const nativeImage = result.querySelector('img.gs-image');
-  const source = googleThumbnails.get(url) || nativeImage?.currentSrc || nativeImage?.src;
-  if (!source || !/^https?:\/\//i.test(source)) return;
-  const frame = document.createElement('a');
-  frame.className = 'google-listing-photo';
-  frame.href = url;
-  frame.target = '_blank';
-  frame.rel = 'noopener noreferrer';
-  frame.setAttribute('aria-label', `Voir l’annonce : ${title}`);
-  const photo = document.createElement('img');
-  photo.alt = title;
-  photo.loading = 'lazy';
-  photo.addEventListener('error', () => { frame.hidden = true; });
-  photo.src = source;
-  frame.appendChild(photo);
-  result.prepend(frame);
+function googleQuery(query) {
+  const words = [query.brand, query.details, query.type, query.color, query.size && `taille ${query.size}`].filter(Boolean).join(' ');
+  return `${words} site:www.vinted.${query.market || 'fr'}/items/`;
 }
 
 function loadGoogleSearch() {
+  const existing = window.google?.search?.cse?.element?.getElement('vinted-results');
+  if (existing) return Promise.resolve(existing);
   if (googleSearchPromise) return googleSearchPromise;
-  const engineId = getSearchEngineId();
   googleSearchPromise = new Promise((resolve, reject) => {
-    let attempts = 0;
-    const host = $('#googleResultsHost');
-    host.className = 'gcse-search';
-    host.dataset.gname = 'vinted-results';
-    host.dataset.linktarget = '_blank';
-    host.dataset.enableimagesearch = 'true';
-    host.dataset.defaultToImageSearch = 'false';
-    host.dataset.thumbnailSize = 'large';
+    const timer = setTimeout(() => { googleSearchPromise = null; reject(new Error('Le moteur Google ne répond pas.')); }, 15000);
     window.__gcse = {
-      searchCallbacks: {
-        web: { ready: rememberGoogleThumbnails },
+      parsetags: 'explicit',
+      initializationCallback: () => {
+        try {
+          const api = window.google.search.cse.element;
+          api.render({
+            div: 'googleResultsHost', tag: 'searchresults-only', gname: 'vinted-results',
+            attributes: { enableImageSearch: false, enableHistory: false, autoSearchOnLoad: false, linkTarget: '_blank' },
+          });
+          clearTimeout(timer);
+          resolve(api.getElement('vinted-results'));
+        } catch (error) { clearTimeout(timer); googleSearchPromise = null; reject(error); }
       },
-    };
-    const waitForElement = () => {
-      const api = window.google?.search?.cse?.element;
-      const element = api?.getElement('vinted-results');
-      if (element) {
-        if (!googleResultsObserved) {
-          googleResultsObserved = true;
-          observeGoogleResults();
-        }
-        resolve(element);
-        return;
-      }
-      attempts += 1;
-      if (attempts >= 100) {
-        googleSearchPromise = null;
-        reject(new Error('Google Search timeout'));
-        return;
-      }
-      setTimeout(waitForElement, 100);
+      searchCallbacks: { web: { ready: receiveGoogleResults } },
     };
     const script = document.createElement('script');
     script.async = true;
-    script.src = `https://cse.google.com/cse.js?cx=${encodeURIComponent(engineId)}`;
-    script.onerror = () => {
-      googleSearchPromise = null;
-      reject(new Error('Google Search unavailable'));
-    };
+    script.src = `https://cse.google.com/cse.js?cx=${encodeURIComponent(getSearchEngineId())}`;
+    script.onerror = () => { clearTimeout(timer); googleSearchPromise = null; script.remove(); reject(new Error('Impossible de charger Google.')); };
     document.head.appendChild(script);
-    waitForElement();
   });
   return googleSearchPromise;
 }
 
-function googleQuery(query) {
-  const domain = `www.vinted.${query.market || 'fr'}`;
-  return [query.brand && `"${query.brand}"`, query.details, query.type && `"${query.type}"`, query.color, query.size && `"taille ${query.size}"`, '-vendu', '-vendue', '-sold', '-verkauft', '-vendido', `site:${domain}/items/`].filter(Boolean).join(' ');
-}
-
-function resultContradictsFilters(text, query) {
-  const normalized = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
-  if (query.maxPrice) {
-    const price = normalized.match(/\b(\d+(?:[,.]\d{1,2})?)\s*€/);
-    if (price && Number(price[1].replace(',', '.')) > Number(query.maxPrice)) return true;
+function receiveGoogleResults(gname, query, promos, results, container) {
+  if (gname !== 'vinted-results') return false;
+  if (query !== googleQuery(state.query)) return true;
+  googleResultsContainer = container;
+  container.classList.add('search-results-list');
+  const seen = new Set();
+  googlePageItems = results.map(RetrouveResults.fromGoogle).filter((item) => {
+    if (!item || seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+  // Migrate favorites and exclusions stored with tracking parameters or country URLs.
+  for (const item of googlePageItems) {
+    for (const key of state.favorites) {
+      if (key.startsWith('google:') && RetrouveResults.listingUrl(key.slice(7))?.id === item.id) {
+        state.favorites.delete(key); state.favorites.add(`google:${item.id}`);
+      }
+    }
+    for (const key of Object.keys(state.googleRejected)) {
+      if (RetrouveResults.listingUrl(key)?.id === item.id) {
+        delete state.googleRejected[key]; state.googleRejected[item.id] = item;
+      }
+    }
+    if (state.favorites.has(`google:${item.id}`)) savedGoogleItems[item.id] = item;
   }
-  if (query.size) {
-    const sizes = [...normalized.matchAll(/\b(?:taille|size|grosse|taglia|talla)\s*[:\-]?\s*([a-z0-9.]+)\b/gi)].map((match) => match[1].toLowerCase());
-    if (sizes.length && !sizes.includes(String(query.size).trim().toLowerCase())) return true;
+  persistGoogleItems();
+  document.body.classList.remove('gsc-overflow-hidden');
+  applyGoogleView();
+  showGoogleResults();
+  if (pendingGoogleSearch?.query === query) {
+    clearTimeout(pendingGoogleSearch.timer);
+    pendingGoogleSearch.resolve();
+    pendingGoogleSearch = null;
   }
-  return false;
+  return true;
 }
 
 async function executeGoogleSearch(query) {
-  preferGoogleImages = false;
   const element = await loadGoogleSearch();
-  element.execute(googleQuery(query));
-  let checks = 0;
-  const waitForResults = setInterval(() => {
-    checks += 1;
-    dockGoogleResults();
-    decorateGoogleResults();
-    if ($('#googleResultsHost .gsc-imageResult-column') || checks >= 40) clearInterval(waitForResults);
-  }, 250);
+  if (query !== state.query) return;
+  return new Promise((resolve, reject) => {
+    const search = googleQuery(query);
+    pendingGoogleSearch = { query: search, resolve, reject, timer: setTimeout(() => {
+      pendingGoogleSearch = null;
+      reject(new Error('Google n’a pas renvoyé de résultats. Réessaie dans un instant.'));
+    }, 20000) };
+    element.execute(search);
+  });
 }
 
-function decorateGoogleResults() {
-  document.body.classList.remove('gsc-overflow-hidden');
-  const imageTab = $$('#googleResultsHost .gsc-tabHeader').find((tab) => /image/i.test(tab.textContent));
-  if (preferGoogleImages && imageTab) {
-    if (imageTab.classList.contains('gsc-tabhActive')) preferGoogleImages = false;
-    else imageTab.click();
-  }
-  $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult-column').forEach((result) => {
-    const titleNode = result.querySelector('.gs-title');
-    const imageNode = result.querySelector('img.gs-image');
-    const link = result.querySelector('a.gs-title[href]') || result.querySelector('a.gs-image[href]') || imageNode?.closest('a') || result.querySelector('a[href]');
-    if (!link?.href) return;
-    const url = result.dataset.originalUrl || link.href;
-    result.dataset.originalUrl = url;
-    const indexedText = result.textContent.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    result.dataset.sold = /\b(vendu|vendue|sold|verkauft|vendido|vendida|esaurito)\b/.test(indexedText) ? 'true' : 'false';
-    result.dataset.filterMismatch = resultContradictsFilters(result.textContent, state.query) ? 'true' : 'false';
-    if (state.googleRejected[url] || result.dataset.sold === 'true' || result.dataset.filterMismatch === 'true') { result.hidden = true; return; }
-    result.hidden = false;
-    const fallbackTitle = [state.query.brand, state.query.details, state.query.type].filter(Boolean).join(' ');
-    const title = (titleNode?.textContent.trim() || imageNode?.alt?.trim() || fallbackTitle || 'Annonce Vinted').replace(/\s*[|–-]\s*Vinted\s*$/i, '').trim();
-    addGoogleListingPhoto(result, url, title);
-    const favoriteId = `google:${url}`;
-    result.dataset.favoriteId = favoriteId;
-    if (result.classList.contains('gsc-imageResult-column')) {
-      const nativeImageBox = result.querySelector('.gs-image-box');
-      const oldPlaceholder = result.querySelector('.google-image-placeholder');
-      if (nativeImageBox) {
-        nativeImageBox.classList.add('google-image-frame');
-        oldPlaceholder?.remove();
-      } else if (!oldPlaceholder) {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'google-image-frame google-image-placeholder';
-        placeholder.innerHTML = '<span>Photo indisponible</span>';
-        result.prepend(placeholder);
-      }
-    }
-    result.querySelectorAll('a[href]').forEach((resultLink) => {
-      if (resultLink.classList.contains('google-safe-link')) return;
-      resultLink.href = url;
-      resultLink.removeAttribute('data-ctorig');
-      resultLink.removeAttribute('onmousedown');
-      resultLink.removeAttribute('onclick');
-      resultLink.target = '_blank';
-      resultLink.rel = 'noopener noreferrer';
-      resultLink.title = 'Ouvrir cette annonce sur Vinted';
+function persistGoogleItems() {
+  localStorage.setItem('retrouve-google-items', JSON.stringify(savedGoogleItems));
+  persistCollections();
+}
+
+function showGoogleResults() {
+  $('#loadingState').hidden = true;
+  $('#listingGrid').hidden = true;
+  $('#emptyState').hidden = true;
+  $('#googleResultsWrap').hidden = false;
+  $('#sourceNotice').classList.add('is-live');
+  $('#sourceNotice').classList.remove('is-searching');
+  $('.feed-panel').classList.remove('is-searching');
+  $('#sourceNotice').innerHTML = `<span>Google</span><p>Photos et descriptions des annonces indexées. Le prix, la disponibilité et les informations manquantes sont à vérifier sur Vinted.</p><a href="${safeText(buildVintedSearchUrl(state.query))}" target="_blank" rel="noopener noreferrer">Rechercher sur Vinted ↗</a>`;
+}
+
+function googleCard(item) {
+  const card = document.createElement('article');
+  card.className = 'search-result-card';
+  card.dataset.itemId = item.id;
+  const isFavorite = state.favorites.has(`google:${item.id}`);
+  card.innerHTML = `
+    <a class="search-result-photo" href="${safeText(item.url)}" target="_blank" rel="noopener noreferrer" aria-label="Voir l’annonce : ${safeText(item.title)}"><span>Photo non disponible</span></a>
+    <div class="search-result-info">
+      <p class="search-result-source">Vinted · Annonce indexée</p>
+      <h3><a href="${safeText(item.url)}" target="_blank" rel="noopener noreferrer">${safeText(item.title)}</a></h3>
+      <p class="search-result-description">${safeText(item.description || 'Description non fournie par Google.')}</p>
+      <p class="search-result-details">${item.size ? `Taille ${safeText(item.size)}` : 'Taille à vérifier sur Vinted'}</p>
+      <div class="search-result-bottom"><strong>${item.price == null ? 'Prix sur Vinted' : `${item.price.toLocaleString('fr-FR')} €`}</strong><a href="${safeText(item.url)}" target="_blank" rel="noopener noreferrer">Voir l’annonce →</a></div>
+    </div>
+    <div class="search-result-actions"><button type="button" data-action="favorite" class="${isFavorite ? 'is-favorite' : ''}" aria-pressed="${isFavorite}" aria-label="${isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}">${isFavorite ? '♥' : '♡'}</button><button type="button" data-action="dismiss" aria-label="Écarter cette annonce">×</button></div>`;
+  if (item.images.length) {
+    const frame = card.querySelector('.search-result-photo');
+    const photo = document.createElement('img');
+    photo.alt = item.title; photo.loading = 'lazy'; photo.referrerPolicy = 'no-referrer';
+    let index = 0;
+    photo.addEventListener('load', () => { frame.classList.add('has-photo'); });
+    photo.addEventListener('error', () => {
+      index += 1;
+      if (index < item.images.length) photo.src = item.images[index];
+      else { photo.remove(); frame.classList.remove('has-photo'); }
     });
-    if (!result.querySelector('.google-dismiss')) {
-      const button = document.createElement('button');
-      button.type = 'button'; button.className = 'google-dismiss'; button.textContent = '×'; button.title = 'Écarter cette annonce'; button.setAttribute('aria-label', 'Écarter cette annonce');
-      result.appendChild(button);
+    photo.src = item.images[index];
+    frame.appendChild(photo);
+  }
+  card.addEventListener('click', (event) => {
+    const action = event.target.closest('button[data-action]')?.dataset.action;
+    if (!action) return;
+    if (action === 'favorite') {
+      const id = `google:${item.id}`;
+      if (state.favorites.has(id)) { state.favorites.delete(id); delete savedGoogleItems[item.id]; }
+      else { state.favorites.add(id); savedGoogleItems[item.id] = item; }
+    } else {
+      state.googleRejected[item.id] = item;
+      showToast('Annonce écartée — tu peux la restaurer plus tard');
     }
-    if (!result.querySelector('.google-favorite')) {
-      const favorite = document.createElement('button');
-      favorite.type = 'button'; favorite.className = `google-favorite${state.favorites.has(favoriteId) ? ' is-favorite' : ''}`;
-      favorite.textContent = state.favorites.has(favoriteId) ? '♥' : '♡'; favorite.setAttribute('aria-label', 'Ajouter aux favoris');
-      result.appendChild(favorite);
-    }
-    if (!result.querySelector('.google-card-meta')) {
-      const meta = document.createElement('div'); meta.className = 'google-card-meta';
-      const brand = document.createElement('p'); brand.className = 'google-card-brand'; brand.textContent = state.query.brand || 'Vinted';
-      const cardTitle = document.createElement('h3'); cardTitle.textContent = title;
-      const details = document.createElement('p'); details.className = 'google-card-details'; details.textContent = [state.query.details, state.query.size && `Taille ${state.query.size}`, state.query.color, state.query.maxPrice && `Maximum ${state.query.maxPrice} €`, 'Annonce indexée'].filter(Boolean).join(' · ');
-      const priceMatch = result.textContent.match(/\b\d+(?:[,.]\d{1,2})?\s*€/);
-      const bottom = document.createElement('div'); bottom.className = 'google-card-bottom';
-      const price = document.createElement('strong'); price.textContent = priceMatch?.[0] || 'Voir le prix';
-      const freshLink = document.createElement('a');
-      freshLink.className = 'google-safe-link';
-      freshLink.href = url;
-      freshLink.target = '_blank';
-      freshLink.rel = 'noopener noreferrer';
-      freshLink.textContent = 'Voir l’annonce →';
-      bottom.append(price, freshLink); meta.append(brand, cardTitle, details, bottom); result.appendChild(meta);
-    }
+    persistGoogleItems(); applyGoogleView();
   });
-  applyGoogleView();
+  return card;
 }
 
 function applyGoogleView() {
-  $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult-column').forEach((result) => {
-    const url = result.dataset.originalUrl;
-    const isRejected = Boolean(url && state.googleRejected[url]);
-    const isSold = result.dataset.sold === 'true';
-    const contradictsFilters = result.dataset.filterMismatch === 'true';
-    const isFavorite = Boolean(result.dataset.favoriteId && state.favorites.has(result.dataset.favoriteId));
-    result.hidden = isSold || contradictsFilters || isRejected || (state.view === 'favorites' && !isFavorite);
-  });
-  $('#feedTitle').textContent = state.view === 'favorites' ? 'Tes coups de cœur' : (state.query.type ? `${state.query.type} rien que pour toi` : 'Les annonces Vinted');
-}
-
-function dockGoogleResults() {
-  const host = $('#googleResultsHost');
-  const overlay = document.querySelector('.gsc-results-wrapper-overlay');
-  if (!overlay) return;
-  if (!host.contains(overlay)) host.appendChild(overlay);
-  overlay.classList.add('is-docked-result');
-  document.body.classList.remove('gsc-overflow-hidden');
-}
-
-function observeGoogleResults() {
-  const host = $('#googleResultsHost');
-  // Keep native link navigation, without Google's image preview/click handlers.
-  const keepListingLink = (event) => {
-    const link = event.target.closest('a[href]');
-    const result = link?.closest('.gsc-webResult.gsc-result, .gsc-imageResult-column');
-    if (!result?.dataset.originalUrl) return;
-    link.href = result.dataset.originalUrl;
-    event.stopImmediatePropagation();
-  };
-  ['click', 'auxclick', 'mousedown'].forEach((type) => host.addEventListener(type, keepListingLink, true));
-  host.addEventListener('click', (event) => {
-    const button = event.target.closest('.google-favorite, .google-dismiss');
-    if (!button) return;
-    event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
-    const result = button.closest('.gsc-webResult.gsc-result, .gsc-imageResult-column');
-    if (!result) return;
-    const url = result.dataset.originalUrl;
-    const favoriteId = result.dataset.favoriteId;
-    if (button.classList.contains('google-dismiss')) {
-      const title = result.querySelector('.google-card-meta h3, a.gs-title')?.textContent.trim() || 'Annonce Vinted';
-      state.googleRejected[url] = { title, url };
-      showToast('Annonce écartée — tu peux la restaurer plus tard');
-    } else {
-      state.favorites.has(favoriteId) ? state.favorites.delete(favoriteId) : state.favorites.add(favoriteId);
-      button.classList.toggle('is-favorite', state.favorites.has(favoriteId));
-      button.textContent = state.favorites.has(favoriteId) ? '♥' : '♡';
-      showToast(state.favorites.has(favoriteId) ? 'Ajouté à tes coups de cœur' : 'Retiré des favoris');
-    }
-    persistCollections(); applyGoogleView();
-  }, true);
-  let timer;
-  new MutationObserver(() => {
-    clearTimeout(timer);
-    timer = setTimeout(decorateGoogleResults, 80);
-  }).observe(host, { childList: true, subtree: true });
-  decorateGoogleResults();
+  const favoritesView = state.view === 'favorites';
+  $('#googleResultsHost').hidden = favoritesView;
+  const favoritesHost = $('#googleFavoritesHost');
+  favoritesHost.hidden = !favoritesView;
+  const container = favoritesView ? favoritesHost : googleResultsContainer;
+  if (!container) return;
+  let items = (favoritesView ? Object.values(savedGoogleItems).filter((item) => state.favorites.has(`google:${item.id}`)) : googlePageItems.filter((item) => RetrouveResults.matches(item, state.query)))
+    .filter((item) => !state.googleRejected[item.id]);
+  if (!favoritesView && $('#photosOnly').checked) items = items.filter((item) => item.images.length);
+  const sort = $('#sortSelect').value;
+  const hasPrices = items.some((item) => item.price != null);
+  ['price-asc', 'price-desc'].forEach((value) => { $(`#sortSelect option[value="${value}"]`).disabled = !hasPrices; });
+  if (!hasPrices) $('#sortSelect').value = 'relevance';
+  if (sort === 'price-asc' || sort === 'price-desc') {
+    items = [...items].sort((a, b) => a.price == null ? (b.price == null ? 0 : 1) : b.price == null ? -1 : sort === 'price-asc' ? a.price - b.price : b.price - a.price);
+  }
+  container.replaceChildren(...items.map(googleCard));
+  if (!items.length) {
+    const empty = document.createElement('p'); empty.className = 'search-results-empty';
+    empty.textContent = favoritesView ? 'Aucun favori enregistré pour le moment.' : 'Aucune annonce sur cette page ne correspond aux critères connus. Essaie la page suivante ou élargis la recherche.';
+    container.appendChild(empty);
+  }
+  $('#feedEyebrow').textContent = `${items.length} annonce${items.length > 1 ? 's' : ''} affichée${items.length > 1 ? 's' : ''}`;
+  $('#feedTitle').textContent = favoritesView ? 'Tes coups de cœur' : (state.query.type ? `${state.query.type} rien que pour toi` : 'Les annonces Vinted');
 }
 
 function renderFilters() {
-  const labels = { type: '', brand: '', details: '', size: 'Taille ', maxPrice: 'Jusqu’à ', color: '', minRating: 'Vendeur ≥ ', market: '' };
+  const labels = { type: '', brand: '', details: '', size: 'Taille recherchée : ', maxPrice: 'Budget souhaité : ', color: '', minRating: 'Vendeur ≥ ', market: '' };
   const tags = Object.entries(state.query).filter(([key, value]) => value && !['market', 'allowUnrated'].includes(key)).map(([key, value]) => `${labels[key]}${value}${key === 'maxPrice' ? ' €' : key === 'minRating' ? ' ★' : ''}`);
-  if (state.query.allowUnrated) tags.push('Nouveaux vendeurs acceptés');
+  if (state.source === 'live' && state.query.allowUnrated) tags.push('Nouveaux vendeurs acceptés');
   $('#activeFilters').innerHTML = tags.map((tag) => `<span>${safeText(tag)}</span>`).join('');
 }
 
@@ -368,6 +296,11 @@ $('#listingGrid').addEventListener('click', (event) => {
 });
 
 async function searchListings(query) {
+  if (pendingGoogleSearch) {
+    clearTimeout(pendingGoogleSearch.timer);
+    pendingGoogleSearch.resolve();
+    pendingGoogleSearch = null;
+  }
   state.query = query;
   $('.feed-panel').classList.add('is-searching');
   $('#sourceNotice').classList.remove('is-live');
@@ -383,32 +316,37 @@ async function searchListings(query) {
       const url = new URL(apiUrl); Object.entries(query).forEach(([key, value]) => (value || value === false) && url.searchParams.set(key, String(value)));
       const response = await fetch(url, { headers: { Accept: 'application/json' } }); if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json(); if (!Array.isArray(payload.items)) throw new Error('Format de réponse invalide');
+      if (query !== state.query) return;
       state.listings = payload.items.map((item, index) => ({ ...item, id: String(item.id ?? `live-${index}`), createdAt: item.createdAt ?? 0 })); state.source = 'live';
       $('#sourceNotice').classList.add('is-live'); $('#sourceNotice').innerHTML = '<span>En direct</span><p>Les annonces viennent de ta source connectée.</p>';
-    } catch (error) { state.listings = [...DEMO_LISTINGS]; state.source = 'demo'; showToast('Source indisponible : affichage de l’aperçu'); }
+    } catch (error) {
+      if (query !== state.query) return;
+      state.listings = []; state.source = 'error';
+      $('#sourceNotice').innerHTML = '<span>Indisponible</span><p>La source d’annonces n’a pas répondu. Réessaie la recherche.</p>';
+    }
   } else if (getSearchEngineId()) {
     try {
-      await executeGoogleSearch(query);
       state.source = 'google';
-      $('#loadingState').hidden = true;
-      $('#listingGrid').hidden = true;
-      $('#emptyState').hidden = true;
+      // Keep Google's verification challenge accessible while waiting for results.
       $('#googleResultsWrap').hidden = false;
-      $('#feedEyebrow').textContent = 'Résultats trouvés sur le web';
-      $('#feedTitle').textContent = query.type ? `${query.type} rien que pour toi` : 'Les annonces Vinted';
-      $('#sourceNotice').classList.add('is-live');
-      $('#sourceNotice').classList.remove('is-searching');
-      $('.feed-panel').classList.remove('is-searching');
-      $('#sourceNotice').innerHTML = '<span>Intégré</span><p>Les annonces Vinted indexées par Google sont affichées sur cette page. La note vendeur reste disponible uniquement avec une API dédiée.</p>';
-      renderFilters(); persistCollections();
+      $('#googleResultsHost').hidden = false;
+      $('#googleFavoritesHost').hidden = true;
+      await executeGoogleSearch(query);
+      if (query !== state.query) return;
+      showGoogleResults();
+      applyGoogleView(); renderFilters(); persistCollections();
       return;
     } catch (error) {
+      if (query !== state.query) return;
       $('#sourceNotice').classList.remove('is-searching');
       $('.feed-panel').classList.remove('is-searching');
-      showToast('Le moteur intégré n’a pas pu charger. Vérifie son identifiant.');
-      state.listings = [...DEMO_LISTINGS]; state.source = 'demo';
+      $('#loadingState').hidden = true;
+      $('#googleResultsWrap').hidden = false;
+      $('#sourceNotice').innerHTML = `<span>En attente</span><p>${safeText(error.message)} Si Google affiche une vérification ci-dessous, complète-la pour continuer.</p><a href="${safeText(buildVintedSearchUrl(query))}" target="_blank" rel="noopener noreferrer">Rechercher sur Vinted ↗</a>`;
+      renderFilters();
+      return;
     }
-  } else { await new Promise((resolve) => setTimeout(resolve, 450)); state.listings = [...DEMO_LISTINGS]; state.source = 'demo'; }
+  } else { state.listings = []; state.source = 'idle'; }
   $('#sourceNotice').classList.remove('is-searching');
   $('.feed-panel').classList.remove('is-searching');
   $('#loadingState').hidden = true; $('#listingGrid').hidden = false; renderListings();
@@ -425,13 +363,27 @@ $('#searchForm').addEventListener('submit', (event) => {
   }
   searchListings(query);
 });
-$('#resetFilters').addEventListener('click', () => { $('#searchForm').reset(); state.query = {}; state.listings = [...DEMO_LISTINGS]; renderListings(); });
-$('#emptyReset').addEventListener('click', () => { state.query = {}; $('#searchForm').reset(); renderListings(); });
-$('#sortSelect').addEventListener('change', renderListings);
+function resetSearch() {
+  if (pendingGoogleSearch) {
+    clearTimeout(pendingGoogleSearch.timer); pendingGoogleSearch.resolve(); pendingGoogleSearch = null;
+  }
+  $('#searchForm').reset(); state.query = {}; state.listings = []; state.source = 'idle';
+  googlePageItems = [];
+  $('#loadingState').hidden = true;
+  $('.feed-panel').classList.remove('is-searching');
+  $('#sourceNotice').classList.remove('is-searching');
+  $('#sourceNotice').innerHTML = '<span>Prêt</span><p>Choisis tes critères et lance une nouvelle recherche.</p>';
+  renderListings();
+}
+$('#resetFilters').addEventListener('click', resetSearch);
+$('#emptyReset').addEventListener('click', resetSearch);
+$('#sortSelect').addEventListener('change', () => state.source === 'google' ? applyGoogleView() : renderListings());
+$('#photosOnly').addEventListener('change', applyGoogleView);
 $$('.nav-link').forEach((button) => button.addEventListener('click', () => {
   $$('.nav-link').forEach((item) => item.classList.remove('active'));
   button.classList.add('active');
   state.view = button.dataset.view;
+  if (state.view === 'favorites' && Object.keys(savedGoogleItems).length) state.source = 'google';
   if (state.source === 'google') {
     $('#googleResultsWrap').hidden = false;
     $('#listingGrid').hidden = true;
@@ -449,16 +401,16 @@ $('#profileForm').addEventListener('submit', (event) => { event.preventDefault()
 const rejectedDialog = $('#rejectedDialog');
 function renderRejected() {
   const items = state.listings.filter((item) => state.rejected.has(item.id));
-  const googleItems = Object.values(state.googleRejected);
+  const googleItems = Object.entries(state.googleRejected).map(([key, item]) => ({ ...item, key }));
   const demoMarkup = items.map((item) => `<div class="rejected-item" data-id="${safeText(item.id)}"><img src="${safeText(item.image)}" alt="" /><span><strong>${safeText(item.title)}</strong><small>${safeText(item.brand)} · ${item.price} €</small></span><button type="button">Restaurer</button></div>`).join('');
-  const googleMarkup = googleItems.map((item) => `<div class="rejected-item" data-google-url="${safeText(item.url)}"><span class="rejected-placeholder">↗</span><span><strong>${safeText(item.title)}</strong><small>Résultat Vinted intégré</small></span><button type="button">Restaurer</button></div>`).join('');
+  const googleMarkup = googleItems.map((item) => `<div class="rejected-item" data-google-url="${safeText(item.key)}"><span class="rejected-placeholder">↗</span><span><strong>${safeText(item.title)}</strong><small>Résultat Vinted intégré</small></span><button type="button">Restaurer</button></div>`).join('');
   $('#rejectedList').innerHTML = demoMarkup + googleMarkup || '<p class="modal-subtitle">Aucune annonce écartée pour l’instant.</p>';
   $('#restoreAll').hidden = !(items.length || googleItems.length);
 }
 $('#rejectedButton').addEventListener('click', () => { renderRejected(); rejectedDialog.showModal(); }); $('#closeRejected').addEventListener('click', () => rejectedDialog.close());
 $('#rejectedList').addEventListener('click', (event) => {
   const item = event.target.closest('.rejected-item'); if (!item || !event.target.closest('button')) return;
-  if (item.dataset.googleUrl) { delete state.googleRejected[item.dataset.googleUrl]; decorateGoogleResults(); } else { state.rejected.delete(item.dataset.id); }
+  if (item.dataset.googleUrl) { delete state.googleRejected[item.dataset.googleUrl]; applyGoogleView(); } else { state.rejected.delete(item.dataset.id); }
   persistCollections(); renderRejected(); if (state.source !== 'google') renderListings();
 });
 $('#restoreAll').addEventListener('click', () => {
@@ -497,5 +449,19 @@ $('#analyzePhoto').addEventListener('click', async () => {
   } catch (error) { message.textContent = 'L’analyse n’a pas pu être chargée. Tu peux continuer sans elle.'; } finally { button.disabled = false; button.innerHTML = '<span>✦</span> Analyser à nouveau'; }
 });
 
-if (!window.RETROUVE_CONFIG?.apiUrl?.trim()) $('#submitLabel').textContent = getSearchEngineId() ? 'Afficher les annonces ici' : 'Configurer les résultats';
+if (!window.RETROUVE_CONFIG?.apiUrl?.trim()) {
+  $('#submitLabel').textContent = getSearchEngineId() ? 'Afficher les annonces ici' : 'Configurer les résultats';
+  fields.minRating.disabled = true;
+  fields.allowUnrated.disabled = true;
+  fields.minRating.closest('.field').title = 'Google ne fournit pas les évaluations des vendeurs.';
+  $('#sellerRatingHelp').hidden = false;
+  $('#maxPrice').closest('.field').querySelector('span').textContent = 'Budget souhaité';
+  $('#maxPrice').title = 'Le prix est à vérifier sur Vinted lorsque Google ne le fournit pas.';
+  $('#sortSelect option[value="newest"]').disabled = true;
+  $('#sortSelect option[value="newest"]').textContent = 'Date non fournie';
+}
 readProfile(); persistCollections(); renderListings();
+if (getSearchEngineId() && !window.RETROUVE_CONFIG?.apiUrl?.trim()) {
+  $('#sourceNotice').innerHTML = '<span>Prêt</span><p>Le moteur est connecté. Choisis tes critères et lance la recherche.</p><button id="configureSource" type="button">Configurer</button>';
+  $('#configureSource').addEventListener('click', openSourceDialog);
+}

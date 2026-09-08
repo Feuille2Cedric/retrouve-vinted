@@ -10,9 +10,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=results-2" />
     <script src="config.js"></script>
-    <script src="app.js" defer></script>
+    <script src="search-results.js?v=results-2" defer></script>
+    <script src="app.js?v=results-2" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -53,6 +54,7 @@
                 <option value="">Toutes les notes</option><option value="3">3 ★ et plus</option><option value="3.5">3,5 ★ et plus</option><option value="4">4 ★ et plus</option><option value="4.5">4,5 ★ et plus</option><option value="4.8">4,8 ★ et plus</option>
               </select></div></label>
               <label class="toggle-row" for="allowUnrated"><span><strong>Accepter les nouveaux vendeurs</strong><small>Inclure ceux qui n'ont encore aucune évaluation</small></span><input id="allowUnrated" type="checkbox" checked /><i aria-hidden="true"></i></label>
+              <p id="sellerRatingHelp" class="filter-help" hidden>Les évaluations des vendeurs ne sont pas fournies par Google.</p>
             </div>
             <label class="field"><span>Marché Vinted</span><div class="select-wrap"><select id="market"><option value="fr">🇫🇷 France</option><option value="be">🇧🇪 Belgique</option><option value="nl">🇳🇱 Pays-Bas</option><option value="de">🇩🇪 Allemagne</option><option value="es">🇪🇸 Espagne</option><option value="it">🇮🇹 Italie</option><option value="co.uk">🇬🇧 Royaume-Uni</option></select></div></label>
 
@@ -85,7 +87,9 @@
           <div id="listingGrid" class="listing-grid" aria-live="polite"></div>
           <div id="googleResultsWrap" class="google-results-wrap" hidden>
             <div class="google-results-note"><span>Résultats intégrés</span><p>La photo et le lien ouvrent l’annonce originale sur Vinted. Utilise le × pour écarter un résultat.</p></div>
+            <label class="photos-only"><input id="photosOnly" type="checkbox" checked /> Avec photo uniquement</label>
             <div id="googleResultsHost"></div>
+            <div id="googleFavoritesHost" hidden></div>
           </div>
           <div id="emptyState" class="empty-state" hidden><span>∿</span><h3>Prêt pour ta recherche</h3><p>Connecte le moteur puis lance une recherche : les annonces illustrées remplaceront cette zone.</p><button id="emptyConfigure" class="empty-configure" type="button">Configurer l'affichage intégré</button><button id="emptyReset" type="button">Réinitialiser les filtres</button></div>
         </div>
@@ -109,7 +113,7 @@
       <p>La solution sans serveur consiste à connecter un moteur Google gratuit limité aux pages Vinted. Les résultats s'afficheront directement ici.</p>
       <label class="field"><span>Identifiant du moteur Google</span><input id="searchEngineId" type="text" placeholder="Ex. 0123456789:abcde" autocomplete="off" /></label>
       <button id="saveSearchEngine" class="submit-button" type="button"><span>Connecter le moteur</span><b>→</b></button>
-      <ol class="setup-steps"><li>Crée un moteur sur Google Programmable Search.</li><li>Ajoute <code>www.vinted.fr/items/*</code> dans “Sites à rechercher”.</li><li>Active aussi la recherche d'images dans les paramètres du moteur.</li><li>Copie son identifiant puis colle-le ci-dessus.</li></ol>
+      <ol class="setup-steps"><li>Crée un moteur sur Google Programmable Search.</li><li>Ajoute <code>www.vinted.fr/items/*</code> dans “Sites à rechercher”.</li><li>Copie son identifiant puis colle-le ci-dessus.</li></ol>
       <a href="https://programmablesearchengine.google.com/controlpanel/create" target="_blank" rel="noopener noreferrer">Créer le moteur gratuitement ↗</a><br /><a href="README.md" target="_blank">Voir le guide détaillé →</a>
     </div></dialog>
 

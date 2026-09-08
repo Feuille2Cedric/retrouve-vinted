@@ -35,18 +35,23 @@ re:trouve rassemble sur une seule interface les critères utiles pour chercher u
 
 Cette solution sans backend affiche directement dans la page les annonces Vinted indexées par Google.
 
-Les anciennes cartes de démonstration ont été retirées. Les résultats illustrés utilisent maintenant la même composition visuelle : photo, marque, titre, détails disponibles, favori, exclusion et lien d'action.
+Les cartes sont construites à partir des données du résultat Google : photo principale issue des métadonnées de l’annonce, titre, description disponible et lien vers le même identifiant Vinted. Les favoris et les exclusions restent enregistrés après rechargement.
 
 1. Créer un moteur sur [Google Programmable Search](https://programmablesearchengine.google.com/controlpanel/create).
 2. Ajouter `www.vinted.fr/items/*` dans **Sites à rechercher**.
 3. Ajouter de la même manière les autres marchés souhaités, par exemple `www.vinted.be/items/*`.
-4. Activer **Recherche d'images** dans les paramètres du moteur pour obtenir une grille illustrée.
-5. Copier l'identifiant du moteur (`cx`).
-6. Sur re:trouve, cliquer sur **Configurer** et coller cet identifiant.
+4. Copier l'identifiant du moteur (`cx`).
+5. Sur re:trouve, cliquer sur **Configurer** et coller cet identifiant.
 
 L'identifiant est mémorisé dans le navigateur. Le site accepte aussi bien l'identifiant seul que le bloc `<script>` fourni par Google.
 
-> Google Programmable Search dépend de son propre index. Certaines annonces récentes peuvent être absentes et la note du vendeur n'est pas fournie.
+Le moteur du projet est préconfiguré dans `config.js`. La recherche d’images Google n’est pas nécessaire : les photos proviennent des métadonnées des résultats web.
+
+> Google Programmable Search dépend de son index, pas du catalogue Vinted en direct. Le budget et la disponibilité ne peuvent pas être garantis. Les évaluations des vendeurs et le tri par date sont désactivés dans ce mode.
+
+Le filtre **Avec photo uniquement** est activé par défaut. Décochez-le pour voir également les annonces sans photo disponible. Les tailles connues qui contredisent la recherche sont exclues. Un prix absent reste indiqué « Prix sur Vinted » : les prix et tailles des articles recommandés dans les extraits Google ne sont jamais attribués à l’annonce. Le tri par prix concerne seulement les prix fournis et reste désactivé lorsqu’aucun prix n’est connu.
+
+Google peut demander une vérification anti-robot ou refuser temporairement des recherches. La vérification reste visible dans la page. Pour un catalogue à jour avec prix, stocks et filtres garantis, une source API fournissant ces données est nécessaire.
 
 La photo et le bouton « Voir l’annonce » ouvrent l’URL de l’annonce indexée, sans la remplacer par une recherche générale. Si l’annonce a expiré, Vinted peut afficher une page indisponible.
 
@@ -121,6 +126,12 @@ Ouvrir ensuite [localhost:8080](http://localhost:8080).
 - TensorFlow.js et MobileNet chargés uniquement à la demande ;
 - Google Programmable Search pour le mode intégré ;
 - GitHub Actions et GitHub Pages pour le déploiement.
+
+## Vérification des résultats
+
+Après avoir lancé le serveur local, ouvrir `/tests/search-results.html`. Les tests utilisent un extrait de réponse réelle du moteur pour vérifier les liens Google, l’association photo/article, les métadonnées absentes et les prix ou tailles provenant d’articles recommandés.
+
+La conversion des données est isolée dans `search-results.js`. Le rendu utilise le callback `ready` de [Google Programmable Search](https://developers.google.com/custom-search/docs/element), sans réécrire continuellement les cartes natives avec un observateur DOM.
 
 ## Structure
 

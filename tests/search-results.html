@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<title>Tests des résultats Vinted</title>
+<pre id="output">Tests en cours…</pre>
+<script src="../search-results.js"></script>
+<script>
+const checks = [];
+function check(name, condition) {
+  checks.push({ name, passed: Boolean(condition) });
+}
+// Reduced fixture from the actual engine response on 2026-09-08.
+// The snippet mentions another product's M size and 10 EUR price.
+const result = {
+  url: 'https://www.google.com/url?q=https%3A%2F%2Fwww.vinted.fr%2Fitems%2F654724427-t-shirt-lacoste%3Freferrer%3Dcatalog',
+  titleNoFormatting: 'T shirt Lacoste | Vinted',
+  contentNoFormatting: 'T shirt Lacoste - Vends t shirt Lacoste vert. Taille FR: S. ... taille: M,. 1. DC. M · Bon état. 10,00 €. 11,20 €incl.',
+  richSnippet: { metatags: {
+    ogTitle: 'T shirt Lacoste | Vinted',
+    ogDescription: 'T shirt Lacoste - Vends t shirt Lacoste vert. Taille FR: S',
+    ogUrl: 'https://www.vinted.be/items/654724427-t-shirt-lacoste',
+    ogImage: 'https://images1.vinted.net/t/01_02069_Ss3SxX67kPcQjcmvrVZ3FnjZ/f800/1602710212.webp?s=a61ca28e514776ae9100ab1daf969890894fd3a5',
+  } },
+};
+const item = RetrouveResults.fromGoogle(result);
+check('Google redirect resolves to the original item', item.url === 'https://www.vinted.fr/items/654724427-t-shirt-lacoste');
+check('Image comes from the same item metadata', item.images[0] === result.richSnippet.metatags.ogImage);
+check('Size comes from the listing, not recommendations', item.size === 'S');
+check('Recommended product price is not attributed to the listing', item.price === null);
+check('Wrong known size is excluded', !RetrouveResults.matches(item, { size: 'M' }));
+check('Wrong brand is excluded', !RetrouveResults.matches(item, { brand: 'Nike' }));
+check('No tracking parameters in canonical identity', RetrouveResults.listingUrl(item.url + '?referrer=catalog').id === item.id);
+const otherMeta = RetrouveResults.fromGoogle({ ...result, richSnippet: { metatags: { ...result.richSnippet.metatags, ogUrl: 'https://www.vinted.fr/items/999-other' } } });
+check('Another listing metadata is rejected', otherMeta.images.length === 0 && otherMeta.size === '');
+check('No metadata does not invent a photo', RetrouveResults.fromGoogle({ ...result, richSnippet: undefined }).images.length === 0);
+check('Catalog URLs cannot become item cards', RetrouveResults.fromGoogle({ url: 'https://www.vinted.fr/catalog' }) === null);
+check('Lookalike domains are rejected', RetrouveResults.listingUrl('https://www.vinted.fr.example.com/items/123') === null);
+check('Script URLs are rejected', RetrouveResults.listingUrl('javascript:alert(1)') === null);
+const unsafe = RetrouveResults.fromGoogle({ ...result, titleNoFormatting: '<img src=x onerror=alert(1)>Title', richSnippet: undefined });
+check('Titles become plain text', unsafe.title === 'Title');
+const priced = RetrouveResults.fromGoogle({ ...result, richSnippet: { metatags: { ...result.richSnippet.metatags, productPriceAmount: '29.90', productPriceCurrency: 'EUR' } } });
+check('Known price respects budget', !RetrouveResults.matches(priced, { maxPrice: '15' }));
+check('Unknown price stays unknown', RetrouveResults.matches(item, { maxPrice: '15' }) && item.price === null);
+const arrayMeta = RetrouveResults.fromGoogle({ ...result, richSnippet: { metatags: [result.richSnippet.metatags] } });
+check('Array metadata is accepted', arrayMeta.images[0] === item.images[0]);
+const german = RetrouveResults.fromGoogle({ ...result, richSnippet: { metatags: { ogDescription: 'Größe M' } } });
+check('German size is read correctly', german.size === 'M');
+window.testResults = checks;
+document.getElementById('output').textContent = JSON.stringify(checks, null, 2);
+document.body.dataset.status = checks.every(test => test.passed) ? 'PASS' : 'FAIL';
+</script>
+</html>
