@@ -77,6 +77,36 @@ function getSearchEngineId() {
 let googleSearchPromise;
 let preferGoogleImages = false;
 let googleResultsObserved = false;
+const googleThumbnails = new Map();
+
+function rememberGoogleThumbnails(gname, query, promos, results) {
+  for (const result of results) {
+    const image = result.thumbnailImage?.url;
+    if (result.url && image) googleThumbnails.set(result.url, image);
+  }
+  return false;
+}
+
+function addGoogleListingPhoto(result, url, title) {
+  if (!result.classList.contains('gsc-webResult') || result.querySelector('.google-listing-photo')) return;
+  const nativeImage = result.querySelector('img.gs-image');
+  const source = googleThumbnails.get(url) || nativeImage?.currentSrc || nativeImage?.src;
+  if (!source || !/^https?:\/\//i.test(source)) return;
+  const frame = document.createElement('a');
+  frame.className = 'google-listing-photo';
+  frame.href = url;
+  frame.target = '_blank';
+  frame.rel = 'noopener noreferrer';
+  frame.setAttribute('aria-label', `Voir l’annonce : ${title}`);
+  const photo = document.createElement('img');
+  photo.alt = title;
+  photo.loading = 'lazy';
+  photo.addEventListener('error', () => { frame.hidden = true; });
+  photo.src = source;
+  frame.appendChild(photo);
+  result.prepend(frame);
+}
+
 function loadGoogleSearch() {
   if (googleSearchPromise) return googleSearchPromise;
   const engineId = getSearchEngineId();
@@ -87,6 +117,13 @@ function loadGoogleSearch() {
     host.dataset.gname = 'vinted-results';
     host.dataset.linktarget = '_blank';
     host.dataset.enableimagesearch = 'true';
+    host.dataset.defaultToImageSearch = 'false';
+    host.dataset.thumbnailSize = 'large';
+    window.__gcse = {
+      searchCallbacks: {
+        web: { ready: rememberGoogleThumbnails },
+      },
+    };
     const waitForElement = () => {
       const api = window.google?.search?.cse?.element;
       const element = api?.getElement('vinted-results');
@@ -138,7 +175,7 @@ function resultContradictsFilters(text, query) {
 }
 
 async function executeGoogleSearch(query) {
-  preferGoogleImages = true;
+  preferGoogleImages = false;
   const element = await loadGoogleSearch();
   element.execute(googleQuery(query));
   let checks = 0;
@@ -171,6 +208,7 @@ function decorateGoogleResults() {
     result.hidden = false;
     const fallbackTitle = [state.query.brand, state.query.details, state.query.type].filter(Boolean).join(' ');
     const title = (titleNode?.textContent.trim() || imageNode?.alt?.trim() || fallbackTitle || 'Annonce Vinted').replace(/\s*[|–-]\s*Vinted\s*$/i, '').trim();
+    addGoogleListingPhoto(result, url, title);
     const favoriteId = `google:${url}`;
     result.dataset.favoriteId = favoriteId;
     if (result.classList.contains('gsc-imageResult-column')) {
