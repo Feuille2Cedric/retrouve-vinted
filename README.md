@@ -42,12 +42,15 @@ Cette solution sans backend affiche directement dans la page les annonces Vinted
 1. Créer un moteur sur [Google Programmable Search](https://programmablesearchengine.google.com/controlpanel/create).
 2. Ajouter `www.vinted.fr/items/*` dans **Sites à rechercher**.
 3. Ajouter de la même manière les autres marchés souhaités, par exemple `www.vinted.be/items/*`.
-4. Copier l'identifiant du moteur (`cx`).
-5. Sur re:trouve, cliquer sur **Configurer** et coller cet identifiant.
+4. Activer **Recherche d'images** dans les paramètres du moteur pour obtenir une grille illustrée.
+5. Copier l'identifiant du moteur (`cx`).
+6. Sur re:trouve, cliquer sur **Configurer** et coller cet identifiant.
 
 L'identifiant est mémorisé dans le navigateur. Le site accepte aussi bien l'identifiant seul que le bloc `<script>` fourni par Google.
 
 > Google Programmable Search dépend de son propre index. Certaines annonces récentes peuvent être absentes et la note du vendeur n'est pas fournie.
+
+Quand une annonce indexée a déjà expiré, re:trouve affiche aussi un bouton orange qui relance une recherche actuelle à partir de son titre. Cela évite de rester bloqué sur une ancienne URL Vinted devenue invalide.
 
 ### API personnalisée
 

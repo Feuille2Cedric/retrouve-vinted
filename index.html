@@ -84,7 +84,7 @@
           <div id="loadingState" class="loading-state" hidden><span></span><span></span><span></span><p>Je fouille les portants…</p></div>
           <div id="listingGrid" class="listing-grid" aria-live="polite"></div>
           <div id="googleResultsWrap" class="google-results-wrap" hidden>
-            <div class="google-results-note"><span>Résultats intégrés</span><p>Résultats de recherche limités aux annonces Vinted indexées par Google. Utilise le × pour écarter une annonce.</p></div>
+            <div class="google-results-note"><span>Résultats intégrés</span><p>Les liens orange relancent une recherche actuelle si l'annonce originale a expiré. Utilise le × pour écarter un résultat.</p></div>
             <div id="googleResultsHost"></div>
           </div>
           <div id="emptyState" class="empty-state" hidden><span>∿</span><h3>Aucun résultat dans l'aperçu</h3><p>Connecte le moteur intégré pour afficher les résultats ici, sans ouvrir une autre page.</p><button id="emptyConfigure" class="empty-configure" type="button">Configurer l'affichage intégré</button><button id="emptyReset" type="button">Réinitialiser les filtres</button></div>
@@ -109,7 +109,7 @@
       <p>La solution sans serveur consiste à connecter un moteur Google gratuit limité aux pages Vinted. Les résultats s'afficheront directement ici.</p>
       <label class="field"><span>Identifiant du moteur Google</span><input id="searchEngineId" type="text" placeholder="Ex. 0123456789:abcde" autocomplete="off" /></label>
       <button id="saveSearchEngine" class="submit-button" type="button"><span>Connecter le moteur</span><b>→</b></button>
-      <ol class="setup-steps"><li>Crée un moteur sur Google Programmable Search.</li><li>Ajoute <code>www.vinted.fr/items/*</code> dans “Sites à rechercher”.</li><li>Copie son identifiant puis colle-le ci-dessus.</li></ol>
+      <ol class="setup-steps"><li>Crée un moteur sur Google Programmable Search.</li><li>Ajoute <code>www.vinted.fr/items/*</code> dans “Sites à rechercher”.</li><li>Active aussi la recherche d'images dans les paramètres du moteur.</li><li>Copie son identifiant puis colle-le ci-dessus.</li></ol>
       <a href="https://programmablesearchengine.google.com/controlpanel/create" target="_blank" rel="noopener noreferrer">Créer le moteur gratuitement ↗</a><br /><a href="README.md" target="_blank">Voir le guide détaillé →</a>
     </div></dialog>
 

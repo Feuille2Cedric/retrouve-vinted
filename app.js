@@ -95,7 +95,20 @@ function loadGoogleSearch() {
       initializationCallback() {
         clearTimeout(timeout);
         try {
-          window.google.search.cse.element.render({ div: 'googleResultsHost', tag: 'searchresults-only', gname: 'vinted-results', attributes: { linkTarget: '_blank' } });
+          window.google.search.cse.element.render({
+            div: 'googleResultsHost',
+            tag: 'searchresults-only',
+            gname: 'vinted-results',
+            attributes: {
+              linkTarget: '_blank',
+              enableImageSearch: true,
+              defaultToImageSearch: true,
+              imageSearchLayout: 'classic',
+              imageSearchResultSetSize: 'large',
+              webSearchResultSetSize: 'large',
+              noResultsString: 'Aucune annonce indexée pour cette recherche.',
+            },
+          });
           observeGoogleResults();
           resolve();
         } catch (error) { reject(error); }
@@ -123,7 +136,8 @@ async function executeGoogleSearch(query) {
 }
 
 function decorateGoogleResults() {
-  $$('#googleResultsHost .gsc-webResult.gsc-result').forEach((result) => {
+  document.body.classList.remove('gsc-overflow-hidden');
+  $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult').forEach((result) => {
     const link = result.querySelector('a.gs-title');
     if (!link?.href) return;
     const url = link.href;
@@ -137,6 +151,16 @@ function decorateGoogleResults() {
       result.hidden = true; persistCollections(); showToast('Annonce écartée — tu peux la restaurer plus tard');
     });
     result.appendChild(button);
+    if (!result.querySelector('.google-safe-link')) {
+      const freshLink = document.createElement('a');
+      const title = link.textContent.replace(/\s*[|–-]\s*Vinted\s*$/i, '').trim();
+      freshLink.className = 'google-safe-link';
+      freshLink.href = buildVintedSearchUrl({ ...state.query, details: title });
+      freshLink.target = '_blank';
+      freshLink.rel = 'noopener noreferrer';
+      freshLink.textContent = 'Rechercher cet article sur Vinted →';
+      result.appendChild(freshLink);
+    }
   });
 }
 
