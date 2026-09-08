@@ -82,28 +82,14 @@ function loadGoogleSearch() {
   const engineId = getSearchEngineId();
   googleSearchPromise = new Promise((resolve, reject) => {
     let attempts = 0;
-    let renderRequested = false;
-    const waitForLibrary = () => {
+    const host = $('#googleResultsHost');
+    host.className = 'gcse-search';
+    host.dataset.gname = 'vinted-results';
+    host.dataset.linktarget = '_blank';
+    host.dataset.enableimagesearch = 'true';
+    const waitForElement = () => {
       const api = window.google?.search?.cse?.element;
-      let element = api?.getElement('vinted-results');
-      if (api?.render && !element && !renderRequested) {
-        renderRequested = true;
-        api.render({
-          div: 'googleResultsHost',
-          tag: 'searchresults-only',
-          gname: 'vinted-results',
-          attributes: {
-            linkTarget: '_blank',
-            enableImageSearch: true,
-            defaultToImageSearch: true,
-            imageSearchLayout: 'classic',
-            imageSearchResultSetSize: 'large',
-            webSearchResultSetSize: 'large',
-            noResultsString: 'Aucune annonce indexée pour cette recherche.',
-          },
-        });
-        element = api.getElement('vinted-results');
-      }
+      const element = api?.getElement('vinted-results');
       if (element) {
         if (!googleResultsObserved) {
           googleResultsObserved = true;
@@ -118,7 +104,7 @@ function loadGoogleSearch() {
         reject(new Error('Google Search timeout'));
         return;
       }
-      setTimeout(waitForLibrary, 100);
+      setTimeout(waitForElement, 100);
     };
     const script = document.createElement('script');
     script.async = true;
@@ -128,7 +114,7 @@ function loadGoogleSearch() {
       reject(new Error('Google Search unavailable'));
     };
     document.head.appendChild(script);
-    waitForLibrary();
+    waitForElement();
   });
   return googleSearchPromise;
 }
@@ -142,6 +128,13 @@ async function executeGoogleSearch(query) {
   preferGoogleImages = true;
   const element = await loadGoogleSearch();
   element.execute(googleQuery(query));
+  let checks = 0;
+  const waitForResults = setInterval(() => {
+    checks += 1;
+    dockGoogleResults();
+    decorateGoogleResults();
+    if ($('#googleResultsHost .gsc-result, #googleResultsHost .gsc-imageResult') || checks >= 40) clearInterval(waitForResults);
+  }, 250);
 }
 
 function decorateGoogleResults() {
@@ -218,6 +211,15 @@ function applyGoogleView() {
     result.hidden = isRejected || (state.view === 'favorites' && !isFavorite);
   });
   $('#feedTitle').textContent = state.view === 'favorites' ? 'Tes coups de cœur' : (state.query.type ? `${state.query.type} rien que pour toi` : 'Les annonces Vinted');
+}
+
+function dockGoogleResults() {
+  const host = $('#googleResultsHost');
+  const overlay = document.querySelector('.gsc-results-wrapper-overlay');
+  if (!overlay) return;
+  if (!host.contains(overlay)) host.appendChild(overlay);
+  overlay.classList.add('is-docked-result');
+  document.body.classList.remove('gsc-overflow-hidden');
 }
 
 function observeGoogleResults() {
