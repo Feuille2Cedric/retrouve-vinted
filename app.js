@@ -85,6 +85,7 @@ function getSearchEngineId() {
 }
 
 let googleSearchPromise;
+let preferGoogleImages = false;
 function loadGoogleSearch() {
   if (googleSearchPromise) return googleSearchPromise;
   const engineId = getSearchEngineId();
@@ -129,6 +130,7 @@ function googleQuery(query) {
 }
 
 async function executeGoogleSearch(query) {
+  preferGoogleImages = true;
   await loadGoogleSearch();
   const element = window.google?.search?.cse?.element?.getElement('vinted-results');
   if (!element) throw new Error('Search element missing');
@@ -137,12 +139,27 @@ async function executeGoogleSearch(query) {
 
 function decorateGoogleResults() {
   document.body.classList.remove('gsc-overflow-hidden');
+  dockGoogleResults();
+  const imageTab = $$('#googleResultsHost .gsc-tabHeader').find((tab) => /image/i.test(tab.textContent));
+  if (preferGoogleImages && imageTab && !imageTab.classList.contains('gsc-tabhActive')) {
+    preferGoogleImages = false;
+    imageTab.click();
+  }
   $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult').forEach((result) => {
     const link = result.querySelector('a.gs-title');
     if (!link?.href) return;
     const url = link.href;
     if (state.googleRejected[url]) { result.hidden = true; return; }
     result.hidden = false;
+    const title = link.textContent.replace(/\s*[|–-]\s*Vinted\s*$/i, '').trim();
+    const freshUrl = buildVintedSearchUrl({ ...state.query, details: title });
+    result.querySelectorAll('a[href]').forEach((resultLink) => {
+      if (resultLink.classList.contains('google-safe-link')) return;
+      resultLink.href = freshUrl;
+      resultLink.target = '_blank';
+      resultLink.rel = 'noopener noreferrer';
+      resultLink.title = 'Relancer une recherche actuelle sur Vinted';
+    });
     if (result.querySelector('.google-dismiss')) return;
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'google-dismiss'; button.textContent = '×'; button.title = 'Écarter cette annonce'; button.setAttribute('aria-label', 'Écarter cette annonce');
@@ -153,9 +170,8 @@ function decorateGoogleResults() {
     result.appendChild(button);
     if (!result.querySelector('.google-safe-link')) {
       const freshLink = document.createElement('a');
-      const title = link.textContent.replace(/\s*[|–-]\s*Vinted\s*$/i, '').trim();
       freshLink.className = 'google-safe-link';
-      freshLink.href = buildVintedSearchUrl({ ...state.query, details: title });
+      freshLink.href = freshUrl;
       freshLink.target = '_blank';
       freshLink.rel = 'noopener noreferrer';
       freshLink.textContent = 'Rechercher cet article sur Vinted →';
@@ -164,9 +180,25 @@ function decorateGoogleResults() {
   });
 }
 
-function observeGoogleResults() {
+function dockGoogleResults() {
   const host = $('#googleResultsHost');
-  new MutationObserver(decorateGoogleResults).observe(host, { childList: true, subtree: true });
+  const overlay = document.querySelector('.gsc-results-wrapper-overlay');
+  if (!overlay) return;
+  if (!host.contains(overlay) && !overlay.contains(host)) host.appendChild(overlay);
+  const forcedStyles = {
+    position: 'static', inset: 'auto', top: 'auto', left: 'auto', right: 'auto', bottom: 'auto', width: '100%',
+    height: 'auto', maxHeight: 'none', margin: '0', padding: '0', overflow: 'visible', background: 'transparent',
+    border: '0', boxShadow: 'none', zIndex: 'auto',
+  };
+  Object.entries(forcedStyles).forEach(([property, value]) => {
+    const cssProperty = property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+    overlay.style.setProperty(cssProperty, value, 'important');
+  });
+  document.querySelectorAll('.gsc-modal-background-image, .gsc-results-close-btn').forEach((element) => element.style.setProperty('display', 'none', 'important'));
+}
+
+function observeGoogleResults() {
+  new MutationObserver(decorateGoogleResults).observe(document.body, { childList: true, subtree: true });
   decorateGoogleResults();
 }
 
