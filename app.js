@@ -133,7 +133,7 @@ async function executeGoogleSearch(query) {
     checks += 1;
     dockGoogleResults();
     decorateGoogleResults();
-    if ($('#googleResultsHost .gsc-imageResult') || checks >= 40) clearInterval(waitForResults);
+    if ($('#googleResultsHost .gsc-imageResult-column') || checks >= 40) clearInterval(waitForResults);
   }, 250);
 }
 
@@ -144,7 +144,7 @@ function decorateGoogleResults() {
     if (imageTab.classList.contains('gsc-tabhActive')) preferGoogleImages = false;
     else imageTab.click();
   }
-  $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult').forEach((result) => {
+  $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult-column').forEach((result) => {
     const link = result.querySelector('a.gs-title');
     if (!link?.href) return;
     const url = result.dataset.originalUrl || link.href;
@@ -165,7 +165,8 @@ function decorateGoogleResults() {
     if (!result.querySelector('.google-dismiss')) {
       const button = document.createElement('button');
       button.type = 'button'; button.className = 'google-dismiss'; button.textContent = '×'; button.title = 'Écarter cette annonce'; button.setAttribute('aria-label', 'Écarter cette annonce');
-      button.addEventListener('click', () => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault(); event.stopPropagation();
         state.googleRejected[url] = { title: link.textContent.trim(), url };
         result.hidden = true; persistCollections(); showToast('Annonce écartée — tu peux la restaurer plus tard');
       });
@@ -175,7 +176,8 @@ function decorateGoogleResults() {
       const favorite = document.createElement('button');
       favorite.type = 'button'; favorite.className = `google-favorite${state.favorites.has(favoriteId) ? ' is-favorite' : ''}`;
       favorite.textContent = state.favorites.has(favoriteId) ? '♥' : '♡'; favorite.setAttribute('aria-label', 'Ajouter aux favoris');
-      favorite.addEventListener('click', () => {
+      favorite.addEventListener('click', (event) => {
+        event.preventDefault(); event.stopPropagation();
         state.favorites.has(favoriteId) ? state.favorites.delete(favoriteId) : state.favorites.add(favoriteId);
         favorite.classList.toggle('is-favorite', state.favorites.has(favoriteId)); favorite.textContent = state.favorites.has(favoriteId) ? '♥' : '♡';
         persistCollections(); showToast(state.favorites.has(favoriteId) ? 'Ajouté à tes coups de cœur' : 'Retiré des favoris');
@@ -204,7 +206,7 @@ function decorateGoogleResults() {
 }
 
 function applyGoogleView() {
-  $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult').forEach((result) => {
+  $$('#googleResultsHost .gsc-webResult.gsc-result, #googleResultsHost .gsc-imageResult-column').forEach((result) => {
     const url = result.dataset.originalUrl;
     const isRejected = Boolean(url && state.googleRejected[url]);
     const isFavorite = Boolean(result.dataset.favoriteId && state.favorites.has(result.dataset.favoriteId));
@@ -275,6 +277,10 @@ $('#listingGrid').addEventListener('click', (event) => {
 
 async function searchListings(query) {
   state.query = query;
+  $('.feed-panel').classList.add('is-searching');
+  $('#sourceNotice').classList.remove('is-live');
+  $('#sourceNotice').classList.add('is-searching');
+  $('#sourceNotice').innerHTML = '<span>Recherche</span><p>Je parcours les annonces et prépare les cartes illustrées…</p>';
   $('#listingGrid').hidden = true;
   $('#googleResultsWrap').hidden = true;
   $('#emptyState').hidden = true;
@@ -299,14 +305,20 @@ async function searchListings(query) {
       $('#feedEyebrow').textContent = 'Résultats trouvés sur le web';
       $('#feedTitle').textContent = query.type ? `${query.type} rien que pour toi` : 'Les annonces Vinted';
       $('#sourceNotice').classList.add('is-live');
+      $('#sourceNotice').classList.remove('is-searching');
+      $('.feed-panel').classList.remove('is-searching');
       $('#sourceNotice').innerHTML = '<span>Intégré</span><p>Les annonces Vinted indexées par Google sont affichées sur cette page. La note vendeur reste disponible uniquement avec une API dédiée.</p>';
       renderFilters(); persistCollections();
       return;
     } catch (error) {
+      $('#sourceNotice').classList.remove('is-searching');
+      $('.feed-panel').classList.remove('is-searching');
       showToast('Le moteur intégré n’a pas pu charger. Vérifie son identifiant.');
       state.listings = [...DEMO_LISTINGS]; state.source = 'demo';
     }
   } else { await new Promise((resolve) => setTimeout(resolve, 450)); state.listings = [...DEMO_LISTINGS]; state.source = 'demo'; }
+  $('#sourceNotice').classList.remove('is-searching');
+  $('.feed-panel').classList.remove('is-searching');
   $('#loadingState').hidden = true; $('#listingGrid').hidden = false; renderListings();
 }
 
