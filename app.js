@@ -80,10 +80,14 @@ function loadGoogleSearch() {
   if (googleSearchPromise) return googleSearchPromise;
   const engineId = getSearchEngineId();
   googleSearchPromise = new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Google Search timeout')), 15000);
+    const fail = (error) => {
+      googleSearchPromise = null;
+      reject(error);
+    };
+    const timeout = setTimeout(() => fail(new Error('Google Search timeout')), 12000);
     window.__gcse = {
       parsetags: 'explicit',
-      initializationCallback() {
+      callback() {
         clearTimeout(timeout);
         try {
           window.google.search.cse.element.render({
@@ -102,13 +106,13 @@ function loadGoogleSearch() {
           });
           observeGoogleResults();
           resolve();
-        } catch (error) { reject(error); }
+        } catch (error) { fail(error); }
       },
     };
     const script = document.createElement('script');
     script.async = true;
     script.src = `https://cse.google.com/cse.js?cx=${encodeURIComponent(engineId)}`;
-    script.onerror = () => { clearTimeout(timeout); reject(new Error('Google Search unavailable')); };
+    script.onerror = () => { clearTimeout(timeout); fail(new Error('Google Search unavailable')); };
     document.head.appendChild(script);
   });
   return googleSearchPromise;
@@ -269,7 +273,11 @@ $('#listingGrid').addEventListener('click', (event) => {
 });
 
 async function searchListings(query) {
-  state.query = query; $('#listingGrid').hidden = true; $('#loadingState').hidden = false;
+  state.query = query;
+  $('#listingGrid').hidden = true;
+  $('#googleResultsWrap').hidden = true;
+  $('#emptyState').hidden = true;
+  $('#loadingState').hidden = false;
   const apiUrl = window.RETROUVE_CONFIG?.apiUrl?.trim();
   if (apiUrl) {
     try {
