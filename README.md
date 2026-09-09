@@ -51,6 +51,8 @@ Le moteur du projet est préconfiguré dans `config.js`. La recherche d’images
 
 Le filtre **Avec photo uniquement** est activé par défaut. Décochez-le pour voir également les annonces sans photo disponible. Les tailles connues qui contredisent la recherche sont exclues. Un prix absent reste indiqué « Prix sur Vinted » : les prix et tailles des articles recommandés dans les extraits Google ne sont jamais attribués à l’annonce. Le tri par prix concerne seulement les prix fournis et reste désactivé lorsqu’aucun prix n’est connu.
 
+Écarter une annonce dans les trouvailles la remplace automatiquement, sans recharger la page. Les cartes conservées restent affichées. L’application utilise d’abord les résultats déjà chargés, puis demande la page Google suivante de façon asynchrone. Les doublons et les annonces écartées sont exclus. Les clics rapprochés sont regroupés ; le chargement s’arrête après trois pages sans remplacement suffisant, à la fin des résultats ou si Google ne répond pas. Écarter un favori ne charge pas de nouvelles annonces dans les favoris.
+
 Google peut demander une vérification anti-robot ou refuser temporairement des recherches. La vérification reste visible dans la page. Pour un catalogue à jour avec prix, stocks et filtres garantis, une source API fournissant ces données est nécessaire.
 
 La photo et le bouton « Voir l’annonce » ouvrent l’URL de l’annonce indexée, sans la remplacer par une recherche générale. Si l’annonce a expiré, Vinted peut afficher une page indisponible.
@@ -130,6 +132,8 @@ Ouvrir ensuite [localhost:8080](http://localhost:8080).
 ## Vérification des résultats
 
 Après avoir lancé le serveur local, ouvrir `/tests/search-results.html`. Les tests utilisent un extrait de réponse réelle du moteur pour vérifier les liens Google, l’association photo/article, les métadonnées absentes et les prix ou tailles provenant d’articles recommandés.
+
+`/tests/refill.html` vérifie le remplacement avec des réponses asynchrones simulées : conservation des cartes, réserve de résultats, clics rapprochés, doublons, fin de pagination, annulation et réponse tardive. Ces tests ne sollicitent pas Google.
 
 La conversion des données est isolée dans `search-results.js`. Le rendu utilise le callback `ready` de [Google Programmable Search](https://developers.google.com/custom-search/docs/element), sans réécrire continuellement les cartes natives avec un observateur DOM.
 

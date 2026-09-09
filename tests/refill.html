@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<title>Tests du remplacement des annonces</title>
+<pre id="output">Tests en cours…</pre>
+<iframe id="app" src="../index.html" style="width:1100px;height:800px"></iframe>
+<script>
+const checks = [];
+const check = (name, passed) => { checks.push({ name, passed }); if (!passed) throw Error(name); };
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+document.querySelector('#app').addEventListener('load', async () => {
+  const w = document.querySelector('#app').contentWindow;
+  const d = w.document;
+  const storageKeys = ['retrouve-rejected', 'retrouve-favorites', 'retrouve-google-rejected', 'retrouve-google-items'];
+  const storageBefore = new Map(storageKeys.map(key => [key, w.localStorage.getItem(key)]));
+  // Test with controlled asynchronous Google callbacks, without network requests.
+  const raw = (id) => ({ url: `https://www.vinted.fr/items/${id}-article`, titleNoFormatting: `Article ${id}` });
+  const cards = () => [...d.querySelectorAll('#googleCardsHost .search-result-card')];
+  const ids = () => cards().map(card => card.dataset.itemId);
+  const dismiss = (id) => cards().find(card => card.dataset.itemId === id).querySelector('[data-action="dismiss"]').click();
+  let requests = 0;
+  let page = 1;
+  let pages;
+  let pauseResponse = false;
+  const receive = (items) => w.receiveGoogleResults('vinted-results', w.googleQuery(w.eval('state.query')), [], items, d.querySelector('#response'));
+  function pager() {
+    const host = d.querySelector('#googleResultsHost');
+    host.innerHTML = `<div id="response"></div><div class="gsc-cursor-box"><span class="gsc-cursor-page gsc-cursor-current-page">${page}</span></div>`;
+    if (page < pages.length) {
+      const next = d.createElement('button'); next.className = 'gsc-cursor-page'; next.textContent = page + 1;
+      next.onclick = () => {
+        requests += 1;
+        if (pauseResponse) return;
+        setTimeout(() => { page += 1; pager(); receive(pages[page - 1]); }, 40);
+      };
+      host.querySelector('.gsc-cursor-box').appendChild(next);
+    }
+  }
+  function setup(responses) {
+    w.stopGoogleRefill();
+    w.eval('googleAppendNext=false; state.googleRejected={}; state.query={market:"fr"}; state.source="google"; state.view="all";');
+    d.querySelector('#photosOnly').checked = false;
+    pages = responses; page = 1; requests = 0; pauseResponse = false; pager(); receive(pages[0]);
+  }
+  try {
+    setup([[raw(1),raw(2),raw(3)], [raw(2),raw(4),raw(5),raw(6)]]);
+    const kept = cards()[1];
+    dismiss('1'); dismiss('3');
+    check('kept card stays in place during request', cards()[0] === kept);
+    await wait(550);
+    check('rapid exclusions share one asynchronous request', requests === 1);
+    check('excluded items do not return and duplicates are removed', ids().join(',') === '2,4,5');
+    check('kept card DOM is reused', cards()[0] === kept);
+    dismiss('4'); await wait(450);
+    check('buffer supplies the next replacement without a request', requests === 1 && ids().join(',') === '2,5,6');
+    dismiss('5'); await wait(450);
+    check('end of pages stops cleanly', requests === 1 && d.querySelector('#refillStatus').textContent.includes('Aucune page'));
+
+    setup([[raw(10),raw(11)], [raw(10),raw(11)], [raw(12),raw(13)]]);
+    dismiss('10'); await wait(1050);
+    check('duplicate-only page advances to the next page', requests === 2 && ids().join(',') === '11,12');
+
+    setup([[raw(15),raw(16)], [raw(15)], [raw(15)], [raw(15)], [raw(17)]]);
+    dismiss('15'); await wait(1950);
+    check('automatic requests stop when pages contain no replacement', requests === 3 && !w.eval('googleRefill'));
+
+    setup([[raw(20),raw(21)], [raw(22)]]);
+    dismiss('20'); w.resetSearch(); await wait(500);
+    check('reset cancels scheduled refill', requests === 0);
+
+    setup([[raw(30),raw(31)], [raw(32)]]);
+    pauseResponse = true; dismiss('30'); await wait(450);
+    check('pending request keeps remaining cards visible', ids().join(',') === '31');
+    w.stopGoogleRefill('Chargement en pause');
+    w.requestGoogleRefill(2); await wait(450);
+    check('paused response does not trigger duplicate requests', requests === 1);
+    page = 2; pager(); receive(pages[1]);
+    check('late response after pause appends without losing kept cards', ids().join(',') === '31,32');
+
+    setup([[raw(40),raw(41)], [raw(42)]]);
+    w.eval('state.view="favorites"');
+    w.requestGoogleRefill(2); await wait(450);
+    check('favorites view does not request unrelated listings', requests === 0);
+    document.body.dataset.status = 'PASS';
+  } catch (error) {
+    checks.push({ error: error.message }); document.body.dataset.status = 'FAIL';
+  } finally {
+    w.stopGoogleRefill();
+    for (const [key, value] of storageBefore) {
+      if (value === null) w.localStorage.removeItem(key); else w.localStorage.setItem(key, value);
+    }
+    document.querySelector('#output').textContent = JSON.stringify(checks, null, 2);
+    window.testResults = checks;
+  }
+});
+</script>
+</html>

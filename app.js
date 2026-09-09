@@ -78,7 +78,56 @@ let googleSearchPromise;
 let pendingGoogleSearch;
 let googleResultsContainer;
 let googlePageItems = [];
+let googleVisibleLimit = Infinity;
+let googleRefill;
+let googleAppendNext = false;
 const savedGoogleItems = JSON.parse(localStorage.getItem('retrouve-google-items') || '{}');
+
+function availableGoogleItems() {
+  return googlePageItems.filter((item) => !state.googleRejected[item.id]
+    && RetrouveResults.matches(item, state.query)
+    && (!$('#photosOnly').checked || item.images.length));
+}
+
+function stopGoogleRefill(message = '') {
+  clearTimeout(googleRefill?.timer);
+  clearTimeout(googleRefill?.timeout);
+  googleRefill = null;
+  $('#googleResultsHost').classList.remove('is-refilling');
+  $('#refillStatus').textContent = message;
+}
+
+function requestGoogleRefill(target) {
+  if (state.view !== 'all' || pendingGoogleSearch || state.source !== 'google') return;
+  // A timed-out request may still be waiting for Google's verification.
+  if (googleAppendNext && !googleRefill) return;
+  if (availableGoogleItems().length >= target) return;
+  if (!googleRefill) googleRefill = { target, attempts: 0, busy: false, query: state.query };
+  googleRefill.target = Math.max(googleRefill.target, target);
+  if (googleRefill.busy) return;
+  clearTimeout(googleRefill.timer);
+  $('#refillStatus').textContent = 'Je cherche de nouvelles annonces…';
+  googleRefill.timer = setTimeout(loadNextGooglePage, 400);
+}
+
+function loadNextGooglePage() {
+  const refill = googleRefill;
+  if (!refill || refill.busy) return;
+  if (refill.query !== state.query || state.view !== 'all') { stopGoogleRefill(); return; }
+  if (availableGoogleItems().length >= refill.target) { stopGoogleRefill('De nouvelles annonces ont été ajoutées.'); return; }
+  if (refill.attempts >= 3) { stopGoogleRefill('Pas d’autre annonce correspondante dans les pages chargées.'); return; }
+  const currentPage = Number($('#googleResultsHost .gsc-cursor-current-page')?.textContent);
+  const nextPage = $$('#googleResultsHost .gsc-cursor-page').find((page) => Number(page.textContent) === currentPage + 1);
+  if (!currentPage || !nextPage) { stopGoogleRefill('Aucune page supplémentaire disponible.'); return; }
+  refill.busy = true;
+  refill.attempts += 1;
+  googleAppendNext = true;
+  $('#googleResultsHost').classList.add('is-refilling');
+  refill.timeout = setTimeout(() => {
+    if (googleRefill === refill) stopGoogleRefill('Le chargement est en pause. Si Google demande une vérification ci-dessous, complète-la pour continuer.');
+  }, 15000);
+  nextPage.click();
+}
 
 function googleQuery(query) {
   const words = [query.brand, query.details, query.type, query.color, query.size && `taille ${query.size}`].filter(Boolean).join(' ');
@@ -118,14 +167,27 @@ function loadGoogleSearch() {
 function receiveGoogleResults(gname, query, promos, results, container) {
   if (gname !== 'vinted-results') return false;
   if (query !== googleQuery(state.query)) return true;
-  googleResultsContainer = container;
+  // Google replaces its result DOM during pagination. Keep our cards outside it.
+  googleResultsContainer = $('#googleCardsHost');
   container.classList.add('search-results-list');
-  const seen = new Set();
-  googlePageItems = results.map(RetrouveResults.fromGoogle).filter((item) => {
+  container.replaceChildren();
+  const append = googleAppendNext;
+  googleAppendNext = false;
+  const seen = new Set(append ? googlePageItems.map((item) => item.id) : []);
+  const incoming = results.map(RetrouveResults.fromGoogle).filter((item) => {
     if (!item || seen.has(item.id)) return false;
     seen.add(item.id);
     return true;
   });
+  googlePageItems = append ? [...googlePageItems, ...incoming] : incoming;
+  if (!append) googleVisibleLimit = Math.max(availableGoogleItems().length, 1);
+  if (googleRefill) {
+    clearTimeout(googleRefill.timeout);
+    googleRefill.busy = false;
+    $('#googleResultsHost').classList.remove('is-refilling');
+    // The native pagination footer is rebuilt after the ready callback returns.
+    googleRefill.timer = setTimeout(loadNextGooglePage, 400);
+  }
   // Migrate favorites and exclusions stored with tracking parameters or country URLs.
   for (const item of googlePageItems) {
     for (const key of state.favorites) {
@@ -218,8 +280,10 @@ function googleCard(item) {
       if (state.favorites.has(id)) { state.favorites.delete(id); delete savedGoogleItems[item.id]; }
       else { state.favorites.add(id); savedGoogleItems[item.id] = item; }
     } else {
+      const visibleCount = Math.min(availableGoogleItems().length, googleVisibleLimit);
       state.googleRejected[item.id] = item;
       showToast('Annonce écartée — tu peux la restaurer plus tard');
+      requestGoogleRefill(visibleCount);
     }
     persistGoogleItems(); applyGoogleView();
   });
@@ -228,12 +292,13 @@ function googleCard(item) {
 
 function applyGoogleView() {
   const favoritesView = state.view === 'favorites';
+  $('#googleCardsHost').hidden = favoritesView;
   $('#googleResultsHost').hidden = favoritesView;
   const favoritesHost = $('#googleFavoritesHost');
   favoritesHost.hidden = !favoritesView;
   const container = favoritesView ? favoritesHost : googleResultsContainer;
   if (!container) return;
-  let items = (favoritesView ? Object.values(savedGoogleItems).filter((item) => state.favorites.has(`google:${item.id}`)) : googlePageItems.filter((item) => RetrouveResults.matches(item, state.query)))
+  let items = (favoritesView ? Object.values(savedGoogleItems).filter((item) => state.favorites.has(`google:${item.id}`)) : availableGoogleItems().slice(0, googleVisibleLimit))
     .filter((item) => !state.googleRejected[item.id]);
   if (!favoritesView && $('#photosOnly').checked) items = items.filter((item) => item.images.length);
   const sort = $('#sortSelect').value;
@@ -243,7 +308,17 @@ function applyGoogleView() {
   if (sort === 'price-asc' || sort === 'price-desc') {
     items = [...items].sort((a, b) => a.price == null ? (b.price == null ? 0 : 1) : b.price == null ? -1 : sort === 'price-asc' ? a.price - b.price : b.price - a.price);
   }
-  container.replaceChildren(...items.map(googleCard));
+  const existingCards = new Map([...container.querySelectorAll('.search-result-card')].map((card) => [card.dataset.itemId, card]));
+  container.replaceChildren(...items.map((item) => {
+    const card = existingCards.get(item.id) || googleCard(item);
+    const button = card.querySelector('[data-action="favorite"]');
+    const favorite = state.favorites.has(`google:${item.id}`);
+    button.classList.toggle('is-favorite', favorite);
+    button.setAttribute('aria-pressed', String(favorite));
+    button.setAttribute('aria-label', favorite ? 'Retirer des favoris' : 'Ajouter aux favoris');
+    button.textContent = favorite ? '♥' : '♡';
+    return card;
+  }));
   if (!items.length) {
     const empty = document.createElement('p'); empty.className = 'search-results-empty';
     empty.textContent = favoritesView ? 'Aucun favori enregistré pour le moment.' : 'Aucune annonce sur cette page ne correspond aux critères connus. Essaie la page suivante ou élargis la recherche.';
@@ -296,6 +371,11 @@ $('#listingGrid').addEventListener('click', (event) => {
 });
 
 async function searchListings(query) {
+  stopGoogleRefill();
+  googleAppendNext = false;
+  googleVisibleLimit = Infinity;
+  googlePageItems = [];
+  $('#googleCardsHost').replaceChildren();
   if (pendingGoogleSearch) {
     clearTimeout(pendingGoogleSearch.timer);
     pendingGoogleSearch.resolve();
@@ -364,6 +444,8 @@ $('#searchForm').addEventListener('submit', (event) => {
   searchListings(query);
 });
 function resetSearch() {
+  stopGoogleRefill();
+  googleAppendNext = false;
   if (pendingGoogleSearch) {
     clearTimeout(pendingGoogleSearch.timer); pendingGoogleSearch.resolve(); pendingGoogleSearch = null;
   }
@@ -378,11 +460,16 @@ function resetSearch() {
 $('#resetFilters').addEventListener('click', resetSearch);
 $('#emptyReset').addEventListener('click', resetSearch);
 $('#sortSelect').addEventListener('change', () => state.source === 'google' ? applyGoogleView() : renderListings());
-$('#photosOnly').addEventListener('change', applyGoogleView);
+$('#photosOnly').addEventListener('change', () => {
+  stopGoogleRefill();
+  googleVisibleLimit = Math.max(availableGoogleItems().length, 1);
+  applyGoogleView();
+});
 $$('.nav-link').forEach((button) => button.addEventListener('click', () => {
   $$('.nav-link').forEach((item) => item.classList.remove('active'));
   button.classList.add('active');
   state.view = button.dataset.view;
+  if (state.view !== 'all') stopGoogleRefill();
   if (state.view === 'favorites' && Object.keys(savedGoogleItems).length) state.source = 'google';
   if (state.source === 'google') {
     $('#googleResultsWrap').hidden = false;

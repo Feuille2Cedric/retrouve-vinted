@@ -10,10 +10,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=results-2" />
+    <link rel="stylesheet" href="styles.css?v=refill-1" />
     <script src="config.js"></script>
     <script src="search-results.js?v=results-2" defer></script>
-    <script src="app.js?v=results-2" defer></script>
+    <script src="app.js?v=refill-1" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -86,8 +86,10 @@
           <div id="loadingState" class="loading-state" hidden><span></span><span></span><span></span><p>Je fouille les portants…</p></div>
           <div id="listingGrid" class="listing-grid" aria-live="polite"></div>
           <div id="googleResultsWrap" class="google-results-wrap" hidden>
-            <div class="google-results-note"><span>Résultats intégrés</span><p>La photo et le lien ouvrent l’annonce originale sur Vinted. Utilise le × pour écarter un résultat.</p></div>
+            <div class="google-results-note"><span>Résultats intégrés</span><p>La photo et le lien ouvrent l’annonce originale sur Vinted. Le × écarte l’annonce et cherche un remplacement.</p></div>
             <label class="photos-only"><input id="photosOnly" type="checkbox" checked /> Avec photo uniquement</label>
+            <div id="googleCardsHost" aria-live="polite"></div>
+            <p id="refillStatus" class="refill-status" role="status"></p>
             <div id="googleResultsHost"></div>
             <div id="googleFavoritesHost" hidden></div>
           </div>
