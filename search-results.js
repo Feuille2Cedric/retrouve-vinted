@@ -7,6 +7,10 @@ window.RetrouveResults = (() => {
   };
   const normalized = (value = '') => String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ß/g, 'ss').toLowerCase();
   const first = (value) => Array.isArray(value) ? value[0] || {} : value || {};
+  const priceValue = (value) => {
+    const formatted = String(value ?? '').trim().replace(/\s/g, '').replace(',', '.');
+    return /^\d+(?:\.\d{1,2})?$/.test(formatted) ? Number(formatted) : null;
+  };
 
   function listingUrl(value) {
     try {
@@ -49,7 +53,7 @@ window.RetrouveResults = (() => {
     const size = normalized(ownText).match(/\b(?:taille|size|grosse|taglia|talla)(?:\s+(?:fr|de\s+l['’]article))?\s*[:\-]?\s*(xxxs|xxs|xs|s|m|l|xxxl|xxl|xl|\d{2,3}(?:[.,]\d)?)\b/i)?.[1]?.toUpperCase() || '';
     const rawPrice = meta['product:price:amount'] || meta.productPriceAmount;
     const currency = meta['product:price:currency'] || meta.productPriceCurrency;
-    const price = rawPrice && currency === 'EUR' && Number.isFinite(Number(rawPrice)) ? Number(rawPrice) : null;
+    const price = rawPrice && ['eur', '€'].includes(String(currency).toLowerCase()) ? priceValue(rawPrice) : null;
     return {
       ...destination, title, description, images, size, price,
       // Search snippets can contain prices/sizes of recommended products. Do not use them.
@@ -61,7 +65,10 @@ window.RetrouveResults = (() => {
     if (item.sold) return false;
     if (query.brand && !normalized(`${item.title} ${item.description}`).includes(normalized(query.brand))) return false;
     if (query.size && item.size && normalized(item.size) !== normalized(query.size)) return false;
-    if (query.maxPrice && item.price != null && item.price > Number(query.maxPrice)) return false;
+    // A price criterion must not pass an item whose price is unknown.
+    if ((query.minPrice || query.maxPrice) && item.price == null) return false;
+    if (query.minPrice && item.price < Number(query.minPrice)) return false;
+    if (query.maxPrice && item.price > Number(query.maxPrice)) return false;
     return true;
   }
 

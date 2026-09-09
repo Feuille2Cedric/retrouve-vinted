@@ -77,6 +77,7 @@ Le navigateur envoie les paramètres suivants lorsqu'ils sont renseignés :
 | `brand` | Marque | `Nike` |
 | `details` | Modèle ou mots-clés | `Air Max 90` |
 | `size` | Taille | `38` |
+| `minPrice` | Prix minimum | `20` |
 | `maxPrice` | Prix maximum | `80` |
 | `color` | Couleur | `blanc` |
 | `minRating` | Note vendeur minimale | `4.5` |

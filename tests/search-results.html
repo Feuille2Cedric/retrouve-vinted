@@ -39,8 +39,13 @@ check('Script URLs are rejected', RetrouveResults.listingUrl('javascript:alert(1
 const unsafe = RetrouveResults.fromGoogle({ ...result, titleNoFormatting: '<img src=x onerror=alert(1)>Title', richSnippet: undefined });
 check('Titles become plain text', unsafe.title === 'Title');
 const priced = RetrouveResults.fromGoogle({ ...result, richSnippet: { metatags: { ...result.richSnippet.metatags, productPriceAmount: '29.90', productPriceCurrency: 'EUR' } } });
+const commaPriced = RetrouveResults.fromGoogle({ ...result, richSnippet: { metatags: { ...result.richSnippet.metatags, productPriceAmount: '29,90', productPriceCurrency: '€' } } });
+check('French price format is read', commaPriced.price === 29.9);
 check('Known price respects budget', !RetrouveResults.matches(priced, { maxPrice: '15' }));
-check('Unknown price stays unknown', RetrouveResults.matches(item, { maxPrice: '15' }) && item.price === null);
+check('Known price respects minimum', !RetrouveResults.matches(priced, { minPrice: '30' }));
+check('Known price fits its range', RetrouveResults.matches(priced, { minPrice: '20', maxPrice: '30' }));
+check('Unknown price is excluded when a budget is set', !RetrouveResults.matches(item, { maxPrice: '15' }) && item.price === null);
+check('Unknown price is allowed without a budget', RetrouveResults.matches(item, {}));
 const arrayMeta = RetrouveResults.fromGoogle({ ...result, richSnippet: { metatags: [result.richSnippet.metatags] } });
 check('Array metadata is accepted', arrayMeta.images[0] === item.images[0]);
 const german = RetrouveResults.fromGoogle({ ...result, richSnippet: { metatags: { ogDescription: 'Größe M' } } });

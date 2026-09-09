@@ -11,7 +11,7 @@ const state = {
   view: 'all', source: 'idle', query: {},
 };
 
-const fields = { type: $('#itemType'), gender: $('#gender'), brand: $('#brand'), details: $('#details'), size: $('#size'), maxPrice: $('#maxPrice'), color: $('#color'), minRating: $('#minRating'), allowUnrated: $('#allowUnrated'), market: $('#market') };
+const fields = { type: $('#itemType'), gender: $('#gender'), brand: $('#brand'), details: $('#details'), size: $('#size'), minPrice: $('#minPrice'), maxPrice: $('#maxPrice'), color: $('#color'), minRating: $('#minRating'), allowUnrated: $('#allowUnrated'), market: $('#market') };
 const safeText = (value = '') => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
 
 function readProfile() {
@@ -31,6 +31,14 @@ function persistCollections() {
 
 const getQuery = () => Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.type === 'checkbox' ? field.checked : field.value.trim()]));
 
+function validatePriceRange() {
+  const min = Number(fields.minPrice.value);
+  const max = Number(fields.maxPrice.value);
+  const invalid = fields.minPrice.value && fields.maxPrice.value && min > max;
+  fields.maxPrice.setCustomValidity(invalid ? 'Le prix maximum doit être supérieur ou égal au prix minimum.' : '');
+  return !invalid;
+}
+
 function matchesQuery(item, query) {
   const haystack = `${item.type} ${item.gender} ${item.brand} ${item.title} ${item.color} ${item.size}`.toLowerCase();
   return (!query.type || !item.type || String(item.type).toLowerCase() === query.type.toLowerCase())
@@ -39,6 +47,7 @@ function matchesQuery(item, query) {
     && (!query.details || query.details.toLowerCase().split(/\s+/).every((word) => haystack.includes(word)))
     && (!query.size || String(item.size).toLowerCase() === query.size.toLowerCase())
     && (!query.color || haystack.includes(query.color.toLowerCase()))
+    && (!query.minPrice || Number(item.price) >= Number(query.minPrice))
     && (!query.maxPrice || Number(item.price) <= Number(query.maxPrice))
     && (item.reviewCount === 0 || item.sellerRating == null ? query.allowUnrated !== false : (!query.minRating || Number(item.sellerRating) >= Number(query.minRating)));
 }
@@ -64,6 +73,7 @@ function buildVintedSearchUrl(query = getQuery()) {
   const url = new URL(`https://www.vinted.${market}/catalog`);
   const searchText = [query.gender, query.brand, query.details, query.type, query.color, query.size && `taille ${query.size}`].filter(Boolean).join(' ');
   if (searchText) url.searchParams.set('search_text', searchText);
+  if (query.minPrice) url.searchParams.set('price_from', query.minPrice);
   if (query.maxPrice) url.searchParams.set('price_to', query.maxPrice);
   url.searchParams.set('order', 'relevance');
   return url.toString();
@@ -322,7 +332,9 @@ function applyGoogleView() {
   }));
   if (!items.length) {
     const empty = document.createElement('p'); empty.className = 'search-results-empty';
-    empty.textContent = favoritesView ? 'Aucun favori enregistré pour le moment.' : 'Aucune annonce sur cette page ne correspond aux critères connus. Essaie la page suivante ou élargis la recherche.';
+    empty.textContent = favoritesView ? 'Aucun favori enregistré pour le moment.' : (state.query.minPrice || state.query.maxPrice)
+      ? 'Aucune annonce avec un prix vérifiable ne correspond à cette fourchette. Tu peux ouvrir la recherche Vinted pour voir les prix à jour.'
+      : 'Aucune annonce sur cette page ne correspond aux critères connus. Essaie la page suivante ou élargis la recherche.';
     container.appendChild(empty);
   }
   $('#feedEyebrow').textContent = `${items.length} annonce${items.length > 1 ? 's' : ''} affichée${items.length > 1 ? 's' : ''}`;
@@ -330,8 +342,8 @@ function applyGoogleView() {
 }
 
 function renderFilters() {
-  const labels = { type: '', gender: '', brand: '', details: '', size: 'Taille recherchée : ', maxPrice: 'Budget souhaité : ', color: '', minRating: 'Vendeur ≥ ', market: '' };
-  const tags = Object.entries(state.query).filter(([key, value]) => value && !['market', 'allowUnrated'].includes(key)).map(([key, value]) => `${labels[key]}${value}${key === 'maxPrice' ? ' €' : key === 'minRating' ? ' ★' : ''}`);
+  const labels = { type: '', gender: '', brand: '', details: '', size: 'Taille recherchée : ', minPrice: 'Prix min. : ', maxPrice: 'Prix max. : ', color: '', minRating: 'Vendeur ≥ ', market: '' };
+  const tags = Object.entries(state.query).filter(([key, value]) => value && !['market', 'allowUnrated'].includes(key)).map(([key, value]) => `${labels[key]}${value}${['minPrice', 'maxPrice'].includes(key) ? ' €' : key === 'minRating' ? ' ★' : ''}`);
   if (state.source === 'live' && state.query.allowUnrated) tags.push('Nouveaux vendeurs acceptés');
   $('#activeFilters').innerHTML = tags.map((tag) => `<span>${safeText(tag)}</span>`).join('');
 }
@@ -435,6 +447,7 @@ async function searchListings(query) {
 
 $('#searchForm').addEventListener('submit', (event) => {
   event.preventDefault();
+  validatePriceRange();
   if (!event.currentTarget.reportValidity()) return;
   const query = getQuery();
   if (!window.RETROUVE_CONFIG?.apiUrl?.trim() && !getSearchEngineId()) {
@@ -461,6 +474,10 @@ function resetSearch() {
 $('#resetFilters').addEventListener('click', resetSearch);
 $('#emptyReset').addEventListener('click', resetSearch);
 $('#sortSelect').addEventListener('change', () => state.source === 'google' ? applyGoogleView() : renderListings());
+['input', 'change'].forEach((eventName) => {
+  fields.minPrice.addEventListener(eventName, validatePriceRange);
+  fields.maxPrice.addEventListener(eventName, validatePriceRange);
+});
 $('#photosOnly').addEventListener('change', () => {
   stopGoogleRefill();
   googleVisibleLimit = Math.max(availableGoogleItems().length, 1);
@@ -543,8 +560,9 @@ if (!window.RETROUVE_CONFIG?.apiUrl?.trim()) {
   fields.allowUnrated.disabled = true;
   fields.minRating.closest('.field').title = 'Google ne fournit pas les évaluations des vendeurs.';
   $('#sellerRatingHelp').hidden = false;
-  $('#maxPrice').closest('.field').querySelector('span').textContent = 'Budget souhaité';
-  $('#maxPrice').title = 'Le prix est à vérifier sur Vinted lorsque Google ne le fournit pas.';
+  $('#priceHelp').hidden = false;
+  $('#minPrice').title = 'Un prix renseigné conserve seulement les annonces au prix vérifiable.';
+  $('#maxPrice').title = 'Un prix renseigné conserve seulement les annonces au prix vérifiable.';
   $('#sortSelect option[value="newest"]').disabled = true;
   $('#sortSelect option[value="newest"]').textContent = 'Date non fournie';
 }

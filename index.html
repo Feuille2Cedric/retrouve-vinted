@@ -10,10 +10,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=refill-1" />
+    <link rel="stylesheet" href="styles.css?v=price-1" />
     <script src="config.js"></script>
     <script src="search-results.js?v=results-2" defer></script>
-    <script src="app.js?v=gender-1" defer></script>
+    <script src="app.js?v=price-1" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -49,8 +49,10 @@
             <label class="field"><span>Modèle ou détails</span><input id="details" type="text" placeholder="Air Max 90, rayé, vintage…" autocomplete="off" /></label>
             <div class="field-row">
               <label class="field"><span>Taille</span><input id="size" type="text" placeholder="M / 38 / 42" autocomplete="off" /></label>
-              <label class="field"><span>Prix max.</span><div class="money-input"><input id="maxPrice" type="number" min="1" placeholder="100" /><b>€</b></div></label>
+              <label class="field"><span>Prix min.</span><div class="money-input"><input id="minPrice" type="number" min="0" step="0.01" placeholder="0" /><b>€</b></div></label>
+              <label class="field"><span>Prix max.</span><div class="money-input"><input id="maxPrice" type="number" min="0" step="0.01" placeholder="100" /><b>€</b></div></label>
             </div>
+            <p id="priceHelp" class="filter-help" hidden>Avec un prix, seules les annonces dont Google fournit un prix vérifiable sont affichées.</p>
             <label class="field"><span>Couleur</span><input id="color" type="text" placeholder="Bleu marine, écru…" autocomplete="off" /></label>
             <div class="seller-rating-field">
               <label class="field"><span>Note vendeur minimale</span><div class="select-wrap"><select id="minRating">

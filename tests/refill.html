@@ -50,6 +50,15 @@ document.querySelector('#app').addEventListener('load', async () => {
     check('gender is sent to Vinted', new URL(w.buildVintedSearchUrl(genderQuery)).searchParams.get('search_text').includes('femme'));
     w.state.query = genderQuery; w.state.source = 'google'; w.renderFilters();
     check('gender is shown in active filters', [...d.querySelectorAll('#activeFilters span')].some(tag => tag.textContent === 'femme'));
+    d.querySelector('#minPrice').value = '20'; d.querySelector('#maxPrice').value = '80';
+    const priceQuery = w.getQuery();
+    const vintedPriceUrl = new URL(w.buildVintedSearchUrl(priceQuery));
+    check('minimum price is read', priceQuery.minPrice === '20');
+    check('price range is sent to Vinted', vintedPriceUrl.searchParams.get('price_from') === '20' && vintedPriceUrl.searchParams.get('price_to') === '80');
+    d.querySelector('#minPrice').value = '90'; d.querySelector('#maxPrice').value = '80';
+    w.validatePriceRange();
+    check('invalid price range is rejected', !d.querySelector('#maxPrice').validity.valid);
+    d.querySelector('#minPrice').value = '20'; w.validatePriceRange();
 
     setup([[raw(1),raw(2),raw(3)], [raw(2),raw(4),raw(5),raw(6)]]);
     const kept = cards()[1];
