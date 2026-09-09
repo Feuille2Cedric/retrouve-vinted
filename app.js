@@ -11,7 +11,7 @@ const state = {
   view: 'all', source: 'idle', query: {},
 };
 
-const fields = { type: $('#itemType'), brand: $('#brand'), details: $('#details'), size: $('#size'), maxPrice: $('#maxPrice'), color: $('#color'), minRating: $('#minRating'), allowUnrated: $('#allowUnrated'), market: $('#market') };
+const fields = { type: $('#itemType'), gender: $('#gender'), brand: $('#brand'), details: $('#details'), size: $('#size'), maxPrice: $('#maxPrice'), color: $('#color'), minRating: $('#minRating'), allowUnrated: $('#allowUnrated'), market: $('#market') };
 const safeText = (value = '') => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
 
 function readProfile() {
@@ -32,8 +32,9 @@ function persistCollections() {
 const getQuery = () => Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.type === 'checkbox' ? field.checked : field.value.trim()]));
 
 function matchesQuery(item, query) {
-  const haystack = `${item.type} ${item.brand} ${item.title} ${item.color} ${item.size}`.toLowerCase();
+  const haystack = `${item.type} ${item.gender} ${item.brand} ${item.title} ${item.color} ${item.size}`.toLowerCase();
   return (!query.type || !item.type || String(item.type).toLowerCase() === query.type.toLowerCase())
+    && (!query.gender || !item.gender || String(item.gender).toLowerCase() === query.gender.toLowerCase())
     && (!query.brand || haystack.includes(query.brand.toLowerCase()))
     && (!query.details || query.details.toLowerCase().split(/\s+/).every((word) => haystack.includes(word)))
     && (!query.size || String(item.size).toLowerCase() === query.size.toLowerCase())
@@ -61,7 +62,7 @@ function listingUrl(item) {
 function buildVintedSearchUrl(query = getQuery()) {
   const market = query.market || 'fr';
   const url = new URL(`https://www.vinted.${market}/catalog`);
-  const searchText = [query.brand, query.details, query.type, query.color, query.size && `taille ${query.size}`].filter(Boolean).join(' ');
+  const searchText = [query.gender, query.brand, query.details, query.type, query.color, query.size && `taille ${query.size}`].filter(Boolean).join(' ');
   if (searchText) url.searchParams.set('search_text', searchText);
   if (query.maxPrice) url.searchParams.set('price_to', query.maxPrice);
   url.searchParams.set('order', 'relevance');
@@ -130,7 +131,7 @@ function loadNextGooglePage() {
 }
 
 function googleQuery(query) {
-  const words = [query.brand, query.details, query.type, query.color, query.size && `taille ${query.size}`].filter(Boolean).join(' ');
+  const words = [query.gender, query.brand, query.details, query.type, query.color, query.size && `taille ${query.size}`].filter(Boolean).join(' ');
   return `${words} site:www.vinted.${query.market || 'fr'}/items/`;
 }
 
@@ -329,7 +330,7 @@ function applyGoogleView() {
 }
 
 function renderFilters() {
-  const labels = { type: '', brand: '', details: '', size: 'Taille recherchée : ', maxPrice: 'Budget souhaité : ', color: '', minRating: 'Vendeur ≥ ', market: '' };
+  const labels = { type: '', gender: '', brand: '', details: '', size: 'Taille recherchée : ', maxPrice: 'Budget souhaité : ', color: '', minRating: 'Vendeur ≥ ', market: '' };
   const tags = Object.entries(state.query).filter(([key, value]) => value && !['market', 'allowUnrated'].includes(key)).map(([key, value]) => `${labels[key]}${value}${key === 'maxPrice' ? ' €' : key === 'minRating' ? ' ★' : ''}`);
   if (state.source === 'live' && state.query.allowUnrated) tags.push('Nouveaux vendeurs acceptés');
   $('#activeFilters').innerHTML = tags.map((tag) => `<span>${safeText(tag)}</span>`).join('');

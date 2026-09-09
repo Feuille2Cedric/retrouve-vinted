@@ -73,6 +73,7 @@ Le navigateur envoie les paramètres suivants lorsqu'ils sont renseignés :
 | Paramètre | Description | Exemple |
 | --- | --- | --- |
 | `type` | Type de pièce | `Baskets` |
+| `gender` | Public recherché | `femme` |
 | `brand` | Marque | `Nike` |
 | `details` | Modèle ou mots-clés | `Air Max 90` |
 | `size` | Taille | `38` |

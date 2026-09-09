@@ -43,6 +43,14 @@ document.querySelector('#app').addEventListener('load', async () => {
     pages = responses; page = 1; requests = 0; pauseResponse = false; pager(); receive(pages[0]);
   }
   try {
+    d.querySelector('#gender').value = 'femme';
+    const genderQuery = w.getQuery();
+    check('gender selector is read', genderQuery.gender === 'femme');
+    check('gender is sent to Google', w.googleQuery(genderQuery).includes('femme'));
+    check('gender is sent to Vinted', new URL(w.buildVintedSearchUrl(genderQuery)).searchParams.get('search_text').includes('femme'));
+    w.state.query = genderQuery; w.state.source = 'google'; w.renderFilters();
+    check('gender is shown in active filters', [...d.querySelectorAll('#activeFilters span')].some(tag => tag.textContent === 'femme'));
+
     setup([[raw(1),raw(2),raw(3)], [raw(2),raw(4),raw(5),raw(6)]]);
     const kept = cards()[1];
     dismiss('1'); dismiss('3');

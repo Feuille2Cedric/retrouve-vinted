@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="styles.css?v=refill-1" />
     <script src="config.js"></script>
     <script src="search-results.js?v=results-2" defer></script>
-    <script src="app.js?v=refill-1" defer></script>
+    <script src="app.js?v=gender-1" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -41,6 +41,9 @@
             <label class="field"><span>Je cherche *</span><div class="select-wrap"><select id="itemType" required>
               <option value="">Choisir une pièce</option>
               <option>Baskets</option><option>Veste</option><option>Manteau</option><option>Sweat</option><option>Pull</option><option>T-shirt</option><option>Chemise</option><option>Robe</option><option>Jean</option><option>Pantalon</option><option>Jupe</option><option>Bottes</option><option>Mocassins</option><option>Sandales</option><option>Sac</option><option>Casquette</option>
+            </select></div></label>
+            <label class="field"><span>Pour qui ? <small>facultatif</small></span><div class="select-wrap"><select id="gender">
+              <option value="">Tous</option><option value="femme">Femme</option><option value="homme">Homme</option>
             </select></div></label>
             <label class="field"><span>Marque <small>facultatif</small></span><input id="brand" type="text" placeholder="Nike, Sézane, Carhartt…" autocomplete="off" /></label>
             <label class="field"><span>Modèle ou détails</span><input id="details" type="text" placeholder="Air Max 90, rayé, vintage…" autocomplete="off" /></label>
