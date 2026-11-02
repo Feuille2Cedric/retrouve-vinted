@@ -59,7 +59,7 @@ La photo et le bouton « Voir l’annonce » ouvrent l’URL de l’annonce inde
 
 ### API personnalisée
 
-Le dépôt contient maintenant un backend prêt à déployer dans [`backend/`](backend), basé sur [`vlymar1/vinted-api-kit`](https://github.com/vlymar1/vinted-api-kit). Il interroge le catalogue uniquement lorsqu'une recherche est lancée : aucun programme ne doit tourner sur l'ordinateur de l'utilisateur.
+Le dépôt contient un backend Node.js prêt à déployer dans [`backend/`](backend), basé sur [`googlarz/vinted-mcp-cli`](https://github.com/googlarz/vinted-mcp-cli). Il lit le catalogue Vinted actuel uniquement lorsqu'une recherche est lancée : aucun programme ne doit tourner sur l'ordinateur de l'utilisateur. Les prix et tailles sont ensuite revérifiés strictement avant l'affichage, et les notes vendeurs sont converties sur 5.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Feuille2Cedric/retrouve-vinted)
 
