@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
-import { VintedClient, opSearch } from '@googlarz/vinted-client';
-import { chromium } from 'playwright';
+import { VintedClient } from '@googlarz/vinted-client';
+import { Impit } from 'impit';
 
 const PORT = Number(process.env.PORT || 8000);
 const ALLOWED_ORIGINS = new Set([
@@ -14,7 +14,7 @@ const COUNTRIES = new Set([
 ]);
 const sellerCache = new Map();
 const client = new VintedClient({ cacheTtlMs: 60_000, timeoutMs: 25_000 });
-let browserPromise;
+let scrapingClient;
 
 function sendJson(response, status, payload, origin = '') {
   response.writeHead(status, {
@@ -67,29 +67,17 @@ async function getSeller(sellerId, country) {
   }
 }
 
-function proxyOptions() {
-  const raw = clean(process.env.VINTED_PROXY_URL);
-  if (!raw) return undefined;
-  const parsed = new URL(raw);
-  return {
-    server: `${parsed.protocol}//${parsed.hostname}:${parsed.port}`,
-    username: decodeURIComponent(parsed.username),
-    password: decodeURIComponent(parsed.password),
-  };
-}
-
-async function getBrowser() {
-  if (!browserPromise) {
-    browserPromise = chromium.launch({
-      headless: true,
-      proxy: proxyOptions(),
-      args: ['--disable-dev-shm-usage', '--no-sandbox'],
-    }).catch((error) => {
-      browserPromise = undefined;
-      throw error;
-    });
+function getScrapingClient() {
+  if (!scrapingClient) {
+    const options = {
+      browser: 'chrome',
+      timeout: 45_000,
+    };
+    const proxyUrl = clean(process.env.VINTED_PROXY_URL);
+    if (proxyUrl) options.proxyUrl = proxyUrl;
+    scrapingClient = new Impit(options);
   }
-  return browserPromise;
+  return scrapingClient;
 }
 
 function matchingBracket(value, start) {
@@ -133,36 +121,72 @@ function mapBrowserItem(entry, domain) {
   };
 }
 
-async function browserSearch({ query, country, priceMin, priceMax }) {
+function decodeHtml(value) {
+  return String(value || '')
+    .replaceAll('&amp;', '&')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>');
+}
+
+function parseHtmlItems(html, domain) {
+  const items = [];
+  const links = html.matchAll(/<a href="([^"]+)"[^>]*data-testid="product-item-id-(\d+)--overlay-link"[^>]*title="([^"]*)"/g);
+  for (const link of links) {
+    const [, path, rawId, rawDescription] = link;
+    const before = html.slice(Math.max(0, link.index - 3_000), link.index);
+    const imageMatches = [...before.matchAll(/<img src="([^"]+)"[^>]*data-testid="product-item-id-(\d+)--image--img"/g)];
+    const image = imageMatches.findLast((match) => match[2] === rawId);
+    const description = decodeHtml(rawDescription);
+    const title = description.split(/,\s*Marque:/i)[0].trim();
+    const brand = description.match(/Marque:\s*([^,]+)/i)?.[1]?.trim();
+    const condition = description.match(/(?:État|Etat):\s*([^,]+)/i)?.[1]?.trim();
+    const size = description.match(/Taille:\s*([^,]+)/i)?.[1]?.trim();
+    const price = description.match(/,\s*(\d+(?:[.,]\d{1,2})?)\s*€/i)?.[1]?.replace(',', '.');
+    if (!price) continue;
+    items.push({
+      id: Number(rawId),
+      title,
+      price,
+      brand,
+      size,
+      condition,
+      url: `https://${domain}${decodeHtml(path).split('?')[0]}`,
+      photoUrl: image ? decodeHtml(image[1]) : '',
+      seller: { id: 0, username: '' },
+    });
+  }
+  return items;
+}
+
+async function lightweightSearch({ query, country, priceMin, priceMax }) {
   const domain = country === 'uk' ? 'www.vinted.co.uk' : `www.vinted.${country}`;
   const search = new URLSearchParams({ search_text: query, page: '1', order: 'relevance' });
   if (priceMin !== undefined) search.set('price_from', String(priceMin));
   if (priceMax !== undefined) search.set('price_to', String(priceMax));
-  const browser = await getBrowser();
-  const context = await browser.newContext({
-    locale: country === 'fr' ? 'fr-FR' : 'en-US',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
+  const response = await getScrapingClient().fetch(`https://${domain}/catalog?${search}`, {
+    headers: {
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': country === 'fr' ? 'fr-FR,fr;q=0.9,en;q=0.7' : 'en-US,en;q=0.9',
+    },
   });
-  const page = await context.newPage();
-  try {
-    const response = await page.goto(`https://${domain}/catalog?${search}`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-    if (!response || response.status() >= 400) throw new Error(`Vinted catalog returned ${response?.status() || 'no response'}`);
-    const html = await page.content();
-    let flight = '';
-    for (const match of html.matchAll(/self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g)) {
-      try { flight += JSON.parse(match[1]); } catch { /* ignore malformed RSC chunk */ }
-    }
-    const marker = '"items":{"items":[';
-    const markerAt = flight.indexOf(marker);
-    if (markerAt < 0) throw new Error('Vinted catalog list was not present in the browser response');
-    const start = markerAt + marker.length - 1;
-    const end = matchingBracket(flight, start);
-    if (end < 0) throw new Error('Vinted catalog response was truncated');
-    const entries = JSON.parse(flight.slice(start, end + 1));
-    return { items: entries.map((entry) => mapBrowserItem(entry, domain)) };
-  } finally {
-    await context.close();
+  if (response.status >= 400) throw new Error(`Vinted catalog returned ${response.status}`);
+  const html = await response.text();
+  const htmlItems = parseHtmlItems(html, domain);
+  if (htmlItems.length) return { items: htmlItems };
+  let flight = '';
+  for (const match of html.matchAll(/self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g)) {
+    try { flight += JSON.parse(match[1]); } catch { /* ignore malformed RSC chunk */ }
   }
+  const marker = '"items":{"items":[';
+  const markerAt = flight.indexOf(marker);
+  if (markerAt < 0) throw new Error('Vinted catalog list was not present in the HTTP response');
+  const start = markerAt + marker.length - 1;
+  const end = matchingBracket(flight, start);
+  if (end < 0) throw new Error('Vinted catalog response was truncated');
+  const entries = JSON.parse(flight.slice(start, end + 1));
+  return { items: entries.map((entry) => mapBrowserItem(entry, domain)) };
 }
 
 async function search(params) {
@@ -181,9 +205,7 @@ async function search(params) {
   const query = [gender, brand, details, type, color].filter(Boolean).join(' ');
   if (!query) return { items: [] };
 
-  const result = process.env.VINTED_PROXY_URL
-    ? await browserSearch({ query, country, priceMin: minPrice, priceMax: maxPrice })
-    : await opSearch(client, { query, country, priceMin: minPrice, priceMax: maxPrice, sortBy: 'relevance', perPage: 96 });
+  const result = await lightweightSearch({ query, country, priceMin: minPrice, priceMax: maxPrice });
 
   const candidates = result.items.filter((item) => {
     const price = Number(item.price);
@@ -240,7 +262,7 @@ createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/health') {
     sendJson(response, 200, {
       status: 'ok',
-      engine: '@googlarz/vinted-client',
+      engine: 'impit',
       version: clean(process.env.RENDER_GIT_COMMIT).slice(0, 7) || 'local',
       proxyConfigured: Boolean(process.env.VINTED_PROXY_URL),
     }, origin);
@@ -253,8 +275,8 @@ createServer(async (request, response) => {
       console.error('Vinted search failed:', error);
       const message = error instanceof Error ? error.message : String(error);
       const hint = /proxy|cloudflare|blocked|403/i.test(message)
-        ? `Vinted bloque actuellement la connexion du serveur (${message}).`
-        : `Vinted est temporairement indisponible (${message}).`;
+        ? 'Vinted bloque actuellement la connexion du serveur.'
+        : 'Vinted est temporairement indisponible.';
       sendJson(response, 502, { detail: hint }, origin);
     }
     return;
