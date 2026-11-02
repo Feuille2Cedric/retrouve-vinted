@@ -153,7 +153,6 @@ async function lightweightSearch({ query, country, priceMin, priceMax }) {
   if (priceMax !== undefined) search.set('price_to', String(priceMax));
   const url = `https://${domain}/catalog?${search}`;
   const requestOptions = {
-    url,
     throwHttpErrors: false,
     retry: { limit: 0 },
     timeout: { request: 45_000 },
@@ -168,15 +167,43 @@ async function lightweightSearch({ query, country, priceMin, priceMax }) {
       'Accept-Language': country === 'fr' ? 'fr-FR,fr;q=0.9,en;q=0.7' : 'en-US,en;q=0.9',
     },
   };
+  const requestWithSession = async (proxyUrl) => {
+    const sessionToken = {};
+    const proxyOptions = proxyUrl ? { proxyUrl } : {};
+    let cookie = '';
+    try {
+      const bootstrap = await gotScraping({
+        ...requestOptions,
+        ...proxyOptions,
+        url: `https://${domain}/catalog`,
+        sessionToken,
+      });
+      const setCookies = bootstrap.headers['set-cookie'];
+      cookie = (Array.isArray(setCookies) ? setCookies : setCookies ? [setCookies] : [])
+        .map((value) => value.split(';', 1)[0])
+        .join('; ');
+    } catch { /* the catalog request below will expose the actual failure */ }
+    return gotScraping({
+      ...requestOptions,
+      ...proxyOptions,
+      url,
+      sessionToken,
+      headers: {
+        ...requestOptions.headers,
+        Referer: `https://${domain}/catalog`,
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+    });
+  };
   let response;
   const proxyUrl = clean(process.env.VINTED_PROXY_URL);
   if (proxyUrl) {
     try {
-      response = await gotScraping({ ...requestOptions, proxyUrl });
+      response = await requestWithSession(proxyUrl);
     } catch { /* retry directly below */ }
   }
   if (!response || response.statusCode >= 400) {
-    response = await gotScraping(requestOptions);
+    response = await requestWithSession('');
   }
   if (response.statusCode >= 400) throw new Error(`Vinted catalog returned ${response.statusCode}`);
   const html = response.body;
