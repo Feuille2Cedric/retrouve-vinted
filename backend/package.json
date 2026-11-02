@@ -11,6 +11,7 @@
     "check": "node --check server.mjs"
   },
   "dependencies": {
-    "@googlarz/vinted-client": "1.6.3"
+    "@googlarz/vinted-client": "1.6.3",
+    "playwright": "1.55.0"
   }
 }
