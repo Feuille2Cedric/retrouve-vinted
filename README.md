@@ -59,6 +59,12 @@ La photo et le bouton « Voir l’annonce » ouvrent l’URL de l’annonce inde
 
 ### API personnalisée
 
+Le dépôt contient maintenant un backend prêt à déployer dans [`backend/`](backend), basé sur [`vlymar1/vinted-api-kit`](https://github.com/vlymar1/vinted-api-kit). Il interroge le catalogue uniquement lorsqu'une recherche est lancée : aucun programme ne doit tourner sur l'ordinateur de l'utilisateur.
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Feuille2Cedric/retrouve-vinted)
+
+Le fichier [`render.yaml`](render.yaml) configure automatiquement le service. Après son premier déploiement, renseigner son URL publique suivie de `/search` dans `config.js`. Le site reste déployé par GitHub Pages ; seul l'accès au catalogue passe par ce service à la demande.
+
 Pour utiliser une source d'annonces autorisée, renseigner son adresse publique dans [`config.js`](config.js) :
 
 ```js
