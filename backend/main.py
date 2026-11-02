@@ -185,7 +185,9 @@ async def search(
         raw_items = await fetch_catalog_items(catalog_url, base_url, market, params)
     except Exception as error:
         logger.exception("Vinted search failed")
-        raise HTTPException(status_code=502, detail="Vinted est temporairement indisponible") from error
+        status = getattr(getattr(error, "response", None), "status_code", None)
+        diagnostic = f"{type(error).__name__}:{status or 'network'}"
+        raise HTTPException(status_code=502, detail=diagnostic) from error
 
     expected_size = size.casefold().strip()
     items: list[dict[str, Any]] = []
