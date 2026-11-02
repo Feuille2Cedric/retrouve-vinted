@@ -251,9 +251,10 @@ createServer(async (request, response) => {
       sendJson(response, 200, await search(url.searchParams), origin);
     } catch (error) {
       console.error('Vinted search failed:', error);
-      const hint = error instanceof Error && /proxy|cloudflare|blocked|403/i.test(error.message)
-        ? 'Vinted bloque actuellement la connexion du serveur.'
-        : 'Vinted est temporairement indisponible.';
+      const message = error instanceof Error ? error.message : String(error);
+      const hint = /proxy|cloudflare|blocked|403/i.test(message)
+        ? `Vinted bloque actuellement la connexion du serveur (${message}).`
+        : `Vinted est temporairement indisponible (${message}).`;
       sendJson(response, 502, { detail: hint }, origin);
     }
     return;
