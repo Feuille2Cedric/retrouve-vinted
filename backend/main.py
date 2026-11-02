@@ -135,6 +135,7 @@ def normalize_item(item: dict[str, Any], base_url: str) -> dict[str, Any] | None
             uploaded = int(datetime.fromisoformat(uploaded.replace("Z", "+00:00")).timestamp())
         except ValueError:
             uploaded = 0
+    review_count = number(user.get("feedback_count")) or 0
     return {
         "id": str(item.get("id") or item_url(item, base_url)),
         "title": str(item.get("title") or "Annonce Vinted"),
@@ -146,7 +147,7 @@ def normalize_item(item: dict[str, Any], base_url: str) -> dict[str, Any] | None
         "country": str(user.get("country_title") or user.get("country_code") or ""),
         "condition": str(item.get("status_title") or nested(item, "status", "title") or "État non indiqué"),
         "sellerRating": number(user.get("feedback_reputation")),
-        "reviewCount": int(user.get("feedback_count") or 0),
+        "reviewCount": int(review_count),
         "image": item_photo(item),
         "url": item_url(item, base_url),
         "createdAt": int(uploaded or 0),
@@ -189,12 +190,18 @@ async def search(
         raw_items = await fetch_catalog_items(catalog_url, base_url, market, params)
     except Exception as error:
         logger.exception("Vinted search failed")
-        raise HTTPException(status_code=502, detail=type(error).__name__) from error
+        raise HTTPException(status_code=502, detail="Vinted est temporairement indisponible") from error
 
     expected_size = size.casefold().strip()
     items: list[dict[str, Any]] = []
     for raw_item in raw_items:
-        item = normalize_item(raw_item, base_url)
+        if not isinstance(raw_item, dict):
+            continue
+        try:
+            item = normalize_item(raw_item, base_url)
+        except (TypeError, ValueError, AttributeError):
+            logger.warning("Skipping malformed Vinted item", exc_info=True)
+            continue
         if not item:
             continue
         if expected_size and item["size"].casefold().strip() != expected_size:
