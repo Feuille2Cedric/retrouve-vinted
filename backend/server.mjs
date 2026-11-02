@@ -14,7 +14,7 @@ const COUNTRIES = new Set([
 ]);
 const sellerCache = new Map();
 const client = new VintedClient({ cacheTtlMs: 60_000, timeoutMs: 25_000 });
-let scrapingClient;
+const scrapingClients = new Map();
 
 function sendJson(response, status, payload, origin = '') {
   response.writeHead(status, {
@@ -67,17 +67,18 @@ async function getSeller(sellerId, country) {
   }
 }
 
-function getScrapingClient() {
-  if (!scrapingClient) {
+function getScrapingClient(useProxy) {
+  const key = useProxy ? 'proxy' : 'direct';
+  if (!scrapingClients.has(key)) {
     const options = {
       browser: 'chrome',
       timeout: 45_000,
     };
     const proxyUrl = clean(process.env.VINTED_PROXY_URL);
-    if (proxyUrl) options.proxyUrl = proxyUrl;
-    scrapingClient = new Impit(options);
+    if (useProxy && proxyUrl) options.proxyUrl = proxyUrl;
+    scrapingClients.set(key, new Impit(options));
   }
-  return scrapingClient;
+  return scrapingClients.get(key);
 }
 
 function matchingBracket(value, start) {
@@ -165,12 +166,22 @@ async function lightweightSearch({ query, country, priceMin, priceMax }) {
   const search = new URLSearchParams({ search_text: query, page: '1', order: 'relevance' });
   if (priceMin !== undefined) search.set('price_from', String(priceMin));
   if (priceMax !== undefined) search.set('price_to', String(priceMax));
-  const response = await getScrapingClient().fetch(`https://${domain}/catalog?${search}`, {
+  const url = `https://${domain}/catalog?${search}`;
+  const requestOptions = {
     headers: {
       Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
       'Accept-Language': country === 'fr' ? 'fr-FR,fr;q=0.9,en;q=0.7' : 'en-US,en;q=0.9',
     },
-  });
+  };
+  let response;
+  if (clean(process.env.VINTED_PROXY_URL)) {
+    try {
+      response = await getScrapingClient(true).fetch(url, requestOptions);
+    } catch { /* retry directly below */ }
+  }
+  if (!response || response.status >= 400) {
+    response = await getScrapingClient(false).fetch(url, requestOptions);
+  }
   if (response.status >= 400) throw new Error(`Vinted catalog returned ${response.status}`);
   const html = await response.text();
   const htmlItems = parseHtmlItems(html, domain);
