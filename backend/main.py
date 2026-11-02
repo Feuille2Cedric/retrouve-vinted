@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
+import time
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlencode, urljoin
 
+from curl_cffi import AsyncSession
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from vinted import VintedClient
@@ -23,6 +26,18 @@ app.add_middleware(
 
 MARKETS = {"fr", "be", "nl", "de", "es", "it", "co.uk", "com"}
 SOLD_STATUSES = {"sold", "closed", "deleted", "hidden", "reserved"}
+logger = logging.getLogger(__name__)
+
+LOCALE_HEADERS = {
+    "fr": "fr-FR,fr;q=0.9",
+    "be": "fr-BE,fr;q=0.9",
+    "nl": "nl-NL,nl;q=0.9",
+    "de": "de-DE,de;q=0.9",
+    "es": "es-ES,es;q=0.9",
+    "it": "it-IT,it;q=0.9",
+    "co.uk": "en-GB,en;q=0.9",
+    "com": "en-US,en;q=0.9",
+}
 
 
 def nested(data: dict[str, Any], *path: str, default: Any = None) -> Any:
@@ -41,6 +56,48 @@ def number(value: Any) -> float | None:
         return float(str(value).replace(",", "."))
     except (TypeError, ValueError):
         return None
+
+
+async def fetch_catalog_items(
+    catalog_url: str,
+    base_url: str,
+    market: str,
+    params: list[tuple[str, str]],
+) -> list[dict[str, Any]]:
+    """Use the maintained client first, then retry without its HEAD cookie probe."""
+    try:
+        async with VintedClient() as client:
+            return await client.search_items(catalog_url, per_page=96, raw_data=True)
+    except Exception as error:
+        logger.warning("Vinted client failed, trying GET fallback: %s", error)
+
+    api_host = "api.www.vinted.com" if market == "com" else f"api.vinted.{market}"
+    api_url = f"https://{api_host}/svc-catalogue/items"
+    api_params = dict(params)
+    api_params.update({"page": "1", "per_page": "96", "time": str(int(time.time()))})
+    locale = LOCALE_HEADERS.get(market, "en-US,en;q=0.9")
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": locale,
+        "Cache-Control": "no-cache",
+        "DNT": "1",
+        "Referer": base_url,
+        "X-Money-Object": "true",
+        "locale": locale.split(",", 1)[0],
+    }
+    async with AsyncSession(headers=headers) as session:
+        landing = await session.get(base_url, impersonate="chrome", verify=True)
+        landing.raise_for_status()
+        response = await session.get(
+            api_url,
+            params=api_params,
+            impersonate="chrome",
+            verify=True,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        items = payload.get("items", [])
+        return items if isinstance(items, list) else []
 
 
 def item_url(item: dict[str, Any], base_url: str) -> str:
@@ -125,9 +182,9 @@ async def search(
     catalog_url = f"{base_url}/catalog?{urlencode(params)}"
 
     try:
-        async with VintedClient() as client:
-            raw_items = await client.search_items(catalog_url, per_page=96, raw_data=True)
+        raw_items = await fetch_catalog_items(catalog_url, base_url, market, params)
     except Exception as error:
+        logger.exception("Vinted search failed")
         raise HTTPException(status_code=502, detail="Vinted est temporairement indisponible") from error
 
     expected_size = size.casefold().strip()
