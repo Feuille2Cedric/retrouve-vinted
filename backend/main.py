@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import datetime
 from typing import Any
@@ -154,7 +155,10 @@ def normalize_item(item: dict[str, Any], base_url: str) -> dict[str, Any] | None
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "version": os.getenv("RENDER_GIT_COMMIT", "local")[:7],
+    }
 
 
 @app.get("/search")
