@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { VintedClient } from '@googlarz/vinted-client';
-import { Impit } from 'impit';
+import { gotScraping } from 'got-scraping';
 
 const PORT = Number(process.env.PORT || 8000);
 const ALLOWED_ORIGINS = new Set([
@@ -14,7 +14,6 @@ const COUNTRIES = new Set([
 ]);
 const sellerCache = new Map();
 const client = new VintedClient({ cacheTtlMs: 60_000, timeoutMs: 25_000 });
-const scrapingClients = new Map();
 
 function sendJson(response, status, payload, origin = '') {
   response.writeHead(status, {
@@ -65,20 +64,6 @@ async function getSeller(sellerId, country) {
   } catch {
     return null;
   }
-}
-
-function getScrapingClient(useProxy) {
-  const key = useProxy ? 'proxy' : 'direct';
-  if (!scrapingClients.has(key)) {
-    const options = {
-      browser: 'chrome',
-      timeout: 45_000,
-    };
-    const proxyUrl = clean(process.env.VINTED_PROXY_URL);
-    if (useProxy && proxyUrl) options.proxyUrl = proxyUrl;
-    scrapingClients.set(key, new Impit(options));
-  }
-  return scrapingClients.get(key);
 }
 
 function matchingBracket(value, start) {
@@ -168,22 +153,33 @@ async function lightweightSearch({ query, country, priceMin, priceMax }) {
   if (priceMax !== undefined) search.set('price_to', String(priceMax));
   const url = `https://${domain}/catalog?${search}`;
   const requestOptions = {
+    url,
+    throwHttpErrors: false,
+    retry: { limit: 0 },
+    timeout: { request: 45_000 },
+    headerGeneratorOptions: {
+      browsers: [{ name: 'chrome', minVersion: 120 }],
+      devices: ['desktop'],
+      locales: country === 'fr' ? ['fr-FR', 'fr'] : ['en-US', 'en'],
+      operatingSystems: ['windows'],
+    },
     headers: {
       Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
       'Accept-Language': country === 'fr' ? 'fr-FR,fr;q=0.9,en;q=0.7' : 'en-US,en;q=0.9',
     },
   };
   let response;
-  if (clean(process.env.VINTED_PROXY_URL)) {
+  const proxyUrl = clean(process.env.VINTED_PROXY_URL);
+  if (proxyUrl) {
     try {
-      response = await getScrapingClient(true).fetch(url, requestOptions);
+      response = await gotScraping({ ...requestOptions, proxyUrl });
     } catch { /* retry directly below */ }
   }
-  if (!response || response.status >= 400) {
-    response = await getScrapingClient(false).fetch(url, requestOptions);
+  if (!response || response.statusCode >= 400) {
+    response = await gotScraping(requestOptions);
   }
-  if (response.status >= 400) throw new Error(`Vinted catalog returned ${response.status}`);
-  const html = await response.text();
+  if (response.statusCode >= 400) throw new Error(`Vinted catalog returned ${response.statusCode}`);
+  const html = response.body;
   const htmlItems = parseHtmlItems(html, domain);
   if (htmlItems.length) return { items: htmlItems };
   let flight = '';
@@ -273,7 +269,7 @@ createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/health') {
     sendJson(response, 200, {
       status: 'ok',
-      engine: 'impit',
+      engine: 'got-scraping',
       version: clean(process.env.RENDER_GIT_COMMIT).slice(0, 7) || 'local',
       proxyConfigured: Boolean(process.env.VINTED_PROXY_URL),
     }, origin);
