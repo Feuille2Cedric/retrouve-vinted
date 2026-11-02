@@ -1,10 +1,10 @@
 services:
   - type: web
     name: retrouve-vinted-api-feuille2cedric
-    runtime: node
+    runtime: docker
     plan: free
     rootDir: backend
-    buildCommand: npm install --omit=optional && npm exec -- playwright install chromium
-    startCommand: npm start
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     healthCheckPath: /health
     autoDeployTrigger: commit
