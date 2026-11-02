@@ -196,16 +196,22 @@ async function lightweightSearch({ query, country, priceMin, priceMax }) {
     });
   };
   let response;
+  let proxyDiagnostic = 'not-configured';
   const proxyUrl = clean(process.env.VINTED_PROXY_URL);
   if (proxyUrl) {
     try {
       response = await requestWithSession(proxyUrl);
-    } catch { /* retry directly below */ }
+      proxyDiagnostic = `http-${response.statusCode}`;
+    } catch (error) {
+      proxyDiagnostic = `error-${error?.code || error?.name || 'unknown'}`;
+    }
   }
   if (!response || response.statusCode >= 400) {
     response = await requestWithSession('');
   }
-  if (response.statusCode >= 400) throw new Error(`Vinted catalog returned ${response.statusCode}`);
+  if (response.statusCode >= 400) {
+    throw new Error(`Vinted catalog blocked: proxy=${proxyDiagnostic}; direct=http-${response.statusCode}`);
+  }
   const html = response.body;
   const htmlItems = parseHtmlItems(html, domain);
   if (htmlItems.length) return { items: htmlItems };
@@ -311,7 +317,8 @@ createServer(async (request, response) => {
       const hint = /proxy|cloudflare|blocked|403/i.test(message)
         ? 'Vinted bloque actuellement la connexion du serveur.'
         : 'Vinted est temporairement indisponible.';
-      sendJson(response, 502, { detail: hint }, origin);
+      const diagnostic = /Vinted catalog blocked:/.test(message) ? message : undefined;
+      sendJson(response, 502, { detail: hint, ...(diagnostic ? { diagnostic } : {}) }, origin);
     }
     return;
   }
